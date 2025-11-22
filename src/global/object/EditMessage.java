@@ -18,5 +18,15 @@ public class EditMessage implements Serializable {
         this.userId = userId;
         this.text = text;
     }
+
+    @Override
+    public String toString() {
+        return "[Mode=" + mode +
+                ", user=" + userId +
+                ", text=" + text +
+                ", blockId=" + blockId +
+                ", offset=" + offset +
+                ", length=" + length + "]";
+    }
 }
 
