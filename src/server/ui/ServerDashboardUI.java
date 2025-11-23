@@ -38,7 +38,9 @@ public class ServerDashboardUI {
         t_display.setEditable(false);
         t_display.setBackground(Color.WHITE);
 
-        panel.add(t_display);
+        //스크롤 감싸기
+        JScrollPane scrollPane = new JScrollPane(t_display);
+        panel.add(scrollPane, BorderLayout.CENTER);
 
         return panel;
     }

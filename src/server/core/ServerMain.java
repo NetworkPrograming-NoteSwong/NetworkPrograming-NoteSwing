@@ -10,8 +10,7 @@ public class ServerMain {
         ServerDashboardUI ui = new ServerDashboardUI();
 
         // server.txt 읽기
-        ConfigReader.ServerConfig config =
-                ConfigReader.load("server.txt");
+        ConfigReader.ServerConfig config = ConfigReader.load("server.txt");
 
         if (config == null) {
             ui.printDisplay("[오류] 설정 파일을 불러올 수 없습니다.");
