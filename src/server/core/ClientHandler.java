@@ -35,7 +35,7 @@ public class ClientHandler extends Thread {
         try {
             while (true) {
                 EditMessage msg = (EditMessage) in.readObject();
-                server.broadcast(msg);
+                server.broadcast(msg, this);
             }//recieve 메서드 분리 할 계획
 
         } catch (Exception e) {

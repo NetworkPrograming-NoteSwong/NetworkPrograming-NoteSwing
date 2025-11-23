@@ -184,6 +184,7 @@ public class EditorMainUI extends JFrame {
 
             @Override
             public void changedUpdate(DocumentEvent e) {
+                if (ignoreDocumentEvents) return;
                 //추후에 구현
             }
         });
@@ -198,13 +199,18 @@ public class EditorMainUI extends JFrame {
     }
 
     public void applyDelete(int offset, int length) {
+        ignoreDocumentEvents = true;
         try {
             t_editor.replaceRange("", offset, offset + length);
-        } catch (Exception ignored) {}
+        } finally {
+            ignoreDocumentEvents = false;
+        }
     }
 
     public void setFullDocument(String text) {
+        ignoreDocumentEvents = true;
         t_editor.setText(text);
+        ignoreDocumentEvents = false;
     }
 
 
