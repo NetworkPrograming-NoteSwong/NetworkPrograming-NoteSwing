@@ -1,12 +1,10 @@
 package global.enums;
 
 public enum Mode {
-    TEXT,           // 텍스트 수정
-    IMAGE,          // 이미지 전송
-    CURSOR,         // 커서 이동
-    BLOCK_CREATE,   // 새 블록 생성
-    BLOCK_DELETE,   // 블록 삭제
-    JOIN,           // 접속
-    LEAVE           // 퇴장
+    INSERT,         // 텍스트 삽입
+    DELETE,         // 텍스트 삭제
+    FULL_SYNC,      // 전체 문서 동기화
+    JOIN,           // 클라이언트 접속
+    LEAVE           // 클라이언트 퇴장
 }
 

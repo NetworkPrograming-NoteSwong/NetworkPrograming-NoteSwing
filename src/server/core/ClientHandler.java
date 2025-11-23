@@ -36,10 +36,12 @@ public class ClientHandler extends Thread {
             while (true) {
                 EditMessage msg = (EditMessage) in.readObject();
                 server.broadcast(msg);
-            }
+            }//recieve 메서드 분리 할 계획
 
         } catch (Exception e) {
             ui.printDisplay("[클라이언트 종료] 클라이언트 연결이 끊어졌습니다.");
+            System.err.println("연결 종료: " + e.getMessage());
+            server.removeHandler(this);
         }
     }
 

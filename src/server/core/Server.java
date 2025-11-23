@@ -15,6 +15,7 @@ public class Server {
     private volatile boolean running = false;
     private ServerSocket serverSocket;
     private ServerDashboardUI ui;
+    private DocumentManager doc = new DocumentManager();
     private List<ClientHandler> handlers = new ArrayList<>();
 
     public Server(int port, ServerDashboardUI ui) {
@@ -56,9 +57,14 @@ public class Server {
 
     public synchronized void broadcast(EditMessage msg) {
         ui.printDisplay("[메시지 수신] " + msg);
+        doc.apply(msg);
 
-        for (ClientHandler handler : handlers) {
-            handler.send(msg);
-        }
+//        for (ClientHandler handler : handlers) {
+//            handler.send(msg);
+//        }
+    }
+
+    public synchronized void removeHandler(ClientHandler handler) {
+        handlers.remove(handler);
     }
 }

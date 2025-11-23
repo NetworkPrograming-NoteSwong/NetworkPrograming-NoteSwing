@@ -1,10 +1,17 @@
 // src/client/ui/EditorMainUI.java
 package client.ui;
 
+import client.controller.EditorController;
+
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
 
 public class EditorMainUI extends JFrame {
+
+    //컨트롤러
+    private EditorController controller;
 
     // 상단 바 컴포넌트
     private JLabel l_loginStatus;
@@ -20,6 +27,9 @@ public class EditorMainUI extends JFrame {
     // 하단 상태바
     private JLabel l_connectionStatus;
     private JLabel l_mode;
+
+    // Document 이벤트 플래그 변수
+    private boolean ignoreDocumentEvents = false;
 
     public EditorMainUI() {
         super("NoteSwing Client");
@@ -110,7 +120,7 @@ public class EditorMainUI extends JFrame {
         JPanel p_editor = new JPanel(new BorderLayout());
         t_editor = new JTextArea();
         t_editor.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-        t_editor.setText("// 여기에서 실시간 코드 편집이 이뤄질 예정입니다.\n");
+
 
         p_editor.add(new JScrollPane(t_editor), BorderLayout.CENTER);
 
@@ -150,15 +160,57 @@ public class EditorMainUI extends JFrame {
         l_connectionStatus.setText(text);
     }
 
-    public void updateMode(String modeText) {
-        l_mode.setText("모드: " + modeText);
+    // 내가 직접 타이핑/삭제한 변경을 감지해서 컨트롤러에 알려주는 역할(컨트롤러가 객체로 만들어 서버로 전송)
+    private void registerDocumentListener() {
+        t_editor.getDocument().addDocumentListener(new DocumentListener() {
+
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                if (ignoreDocumentEvents) return;
+
+                try {
+                    int offset = e.getOffset();
+                    int length = e.getLength();
+                    String inserted = t_editor.getText().substring(offset, offset + length);
+                    controller.onTextInserted(offset, inserted);
+                } catch (Exception ignored) {}
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                if (ignoreDocumentEvents) return;
+                controller.onTextDeleted(e.getOffset(), e.getLength());
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                //추후에 구현
+            }
+        });
     }
 
-    public void setEditorText(String text) {
+
+    // 다른 사용자가 편집한 결과를 우리 에디터에 반영할 때만 쓰는 메서드(밑에 3개)
+    public void applyInsert(int offset, String text) {
+        ignoreDocumentEvents = true;
+        t_editor.insert(text, offset);
+        ignoreDocumentEvents = false;
+    }
+
+    public void applyDelete(int offset, int length) {
+        try {
+            t_editor.replaceRange("", offset, offset + length);
+        } catch (Exception ignored) {}
+    }
+
+    public void setFullDocument(String text) {
         t_editor.setText(text);
     }
 
-    public String getEditorText() {
-        return t_editor.getText();
+
+    //setter 메서드 (컨트롤러 주입)
+    public void setController(EditorController controller) {
+        this.controller = controller;
+        registerDocumentListener();
     }
 }
