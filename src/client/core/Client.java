@@ -43,8 +43,7 @@ public class Client {
                 connected = true;
 
                 // 메시지 수신 스레드 시작
-                //현재는 서버가 우리한테 아무것도 안 보내니까, 수신 스레드는 잠깐 끈다.
-                //new ClientReceiver(in, controller).start();
+                new ClientReceiver(in, controller).start();
 
             } catch (Exception e) {
                 connected = false;

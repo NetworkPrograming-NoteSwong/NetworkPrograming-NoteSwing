@@ -55,13 +55,14 @@ public class Server {
         }
     }
 
-    public synchronized void broadcast(EditMessage msg) {
+    public synchronized void broadcast(EditMessage msg, ClientHandler sender) {
         ui.printDisplay("[메시지 수신] " + msg);
         doc.apply(msg);
 
-//        for (ClientHandler handler : handlers) {
-//            handler.send(msg);
-//        }
+        for (ClientHandler handler : handlers) {
+            if (handler == sender) continue;
+            handler.send(msg);
+        }
     }
 
     public synchronized void removeHandler(ClientHandler handler) {
