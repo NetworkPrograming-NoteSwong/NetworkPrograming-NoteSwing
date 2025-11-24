@@ -16,8 +16,12 @@ public class DocumentManager {
                 document.delete(msg.offset, msg.offset + msg.length);
             }
 
-            //FULL_SYNC 추가 할 계획
-            //새로 들어온 클라이언트에게 서버가 현재 문서 전체를 내려줄 때 사용 예정
+            case FULL_SYNC -> {
+                document.setLength(0);
+                if (msg.text != null) {
+                    document.append(msg.text);
+                }
+            }
         }
     }
 
