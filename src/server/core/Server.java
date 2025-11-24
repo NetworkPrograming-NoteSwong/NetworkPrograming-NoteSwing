@@ -1,5 +1,6 @@
 package server.core;
 
+import global.enums.Mode;
 import global.object.EditMessage;
 import server.ui.ServerDashboardUI;
 
@@ -35,6 +36,13 @@ public class Server {
 
                 ClientHandler handler = new ClientHandler(socket, this, ui);
                 handlers.add(handler);
+
+                String current = doc.getDocument();
+                if (!current.isEmpty()) {
+                    EditMessage full = new EditMessage(Mode.FULL_SYNC, "server", current);
+                    handler.send(full);
+                }
+
                 handler.start();
             }
 

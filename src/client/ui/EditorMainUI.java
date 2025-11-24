@@ -185,7 +185,11 @@ public class EditorMainUI extends JFrame {
             @Override
             public void changedUpdate(DocumentEvent e) {
                 if (ignoreDocumentEvents) return;
-                //추후에 구현
+                // 스타일/속성 변화 등으로 문서가 바뀌었다고 판단되는 경우(A문서에서 B문서로 이동할 때)
+                // 전체 문서를 한 번에 서버로 보내 FULL_SYNC 하도록 함
+                String fullText = t_editor.getText();
+                controller.onFullDocumentChanged(fullText);
+
             }
         });
     }
