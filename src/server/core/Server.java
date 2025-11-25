@@ -40,6 +40,7 @@ public class Server {
                 String current = doc.getDocument();
                 if (!current.isEmpty()) {
                     EditMessage full = new EditMessage(Mode.FULL_SYNC, "server", current);
+                    ui.printDisplay("[FULL_SYNC 전송] 새 클라이언트에게 전체 문서 전송: " + full);
                     handler.send(full);
                 }
 

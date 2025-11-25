@@ -53,10 +53,6 @@ public class EditorController {
         ui.updateConnectionStatus(text);
     }
 
-    public void onConnectionLost() {
-        ui.updateConnectionStatus("서버 연결 끊김");
-    }
-
     // ===== 서버에서 오는 이벤트 =====
     public void onRemoteInsert(int offset, String text) {
         ui.applyInsert(offset, text);
@@ -70,5 +66,8 @@ public class EditorController {
         ui.setFullDocument(text);
     }
 
+    public void onConnectionLost() {
+        ui.updateConnectionStatus("서버 연결 끊김");
+    }
 
 }
