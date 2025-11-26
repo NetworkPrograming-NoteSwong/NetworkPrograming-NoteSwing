@@ -24,6 +24,7 @@ public class ClientReceiver extends Thread {
                     case INSERT -> controller.onRemoteInsert(msg.offset, msg.text);
                     case DELETE -> controller.onRemoteDelete(msg.offset, msg.length);
                     case FULL_SYNC -> controller.onRemoteFullSync(msg.text);
+                    case CURSOR -> controller.onRemoteCursor(msg.userId, msg.offset, msg.length);
                 }
             }
         } catch (Exception e) {
