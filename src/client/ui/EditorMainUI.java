@@ -6,7 +6,12 @@ import client.controller.EditorController;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DefaultHighlighter;
+import javax.swing.text.Highlighter;
 import java.awt.*;
+import java.util.HashMap;
+import java.util.Map;
 
 public class EditorMainUI extends JFrame {
 
@@ -30,6 +35,9 @@ public class EditorMainUI extends JFrame {
 
     // Document 이벤트 플래그 변수
     private boolean ignoreDocumentEvents = false;
+
+    //커서 하이라이트로 표시
+    private Map<String, Object> cursorHighlights = new HashMap<>();
 
     public EditorMainUI() {
         super("NoteSwing Client");
@@ -194,6 +202,22 @@ public class EditorMainUI extends JFrame {
         });
     }
 
+    private void registerCaretListener() {
+        t_editor.addCaretListener(e -> {
+            if (ignoreDocumentEvents) return;
+
+            int dot = e.getDot();   // 현재 커서 위치
+            int mark = e.getMark(); // 선택 시작 위치 (선택 없으면 dot와 같음)
+
+            int start = Math.min(dot, mark);
+            int length = Math.abs(dot - mark); // 0이면 단일 커서
+
+            // 컨트롤러에게 “커서/선택 변경됨” 알림
+            controller.onCursorMoved(start, length);
+        });
+    }
+
+
 
     // 다른 사용자가 편집한 결과를 우리 에디터에 반영할 때만 쓰는 메서드(밑에 3개)
     public void applyInsert(int offset, String text) {
@@ -217,10 +241,35 @@ public class EditorMainUI extends JFrame {
         ignoreDocumentEvents = false;
     }
 
+    //커서 하이라이트 보여주는 용도
+    public void showRemoteCursor(String userId, int offset, int length) {
+        try {
+            Highlighter highlighter = t_editor.getHighlighter();
+
+            // 이전 하이라이트 제거
+            Object oldTag = cursorHighlights.get(userId);
+            if (oldTag != null) {
+                highlighter.removeHighlight(oldTag);
+            }
+
+            int start = offset;
+            int end = offset + Math.max(1, length); // length가 0이면 한 글자만 강조
+
+            Object tag = highlighter.addHighlight(
+                    start, end,
+                    new DefaultHighlighter.DefaultHighlightPainter(
+                            new Color(255, 255, 150)  // 노란색 같은 공통 색
+                    )
+            );
+            cursorHighlights.put(userId, tag);
+        } catch (BadLocationException ignored) {}
+    }
+
 
     //setter 메서드 (컨트롤러 주입)
     public void setController(EditorController controller) {
         this.controller = controller;
-        registerDocumentListener();
+        registerDocumentListener(); //문서 입력,삭제 관련 리스너
+        registerCaretListener(); // 커서 관련 리스너
     }
 }

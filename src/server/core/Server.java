@@ -68,6 +68,10 @@ public class Server {
         ui.printDisplay("[메시지 수신] " + msg);
         doc.apply(msg);
 
+        if (msg.mode != Mode.CURSOR) {
+            doc.apply(msg);    // 커서는 문서 상태 안 바꿈
+        }
+
         for (ClientHandler handler : handlers) {
             if (handler == sender) continue;
             handler.send(msg);

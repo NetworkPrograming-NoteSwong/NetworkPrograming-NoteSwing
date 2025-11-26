@@ -47,6 +47,15 @@ public class EditorController {
         client.send(msg);
     }
 
+    //다른 클라이언트가 커서 이동한 경우
+    public void onCursorMoved(int offset, int length) {
+        // 너무 자주 보내는게 부담이면 나중에 rate limit 플래그 추가 예정
+        EditMessage msg = new EditMessage(Mode.CURSOR, userId, null);
+        msg.offset = offset;
+        msg.length = length;
+        client.send(msg);
+    }
+
 
     // 클라이언트 UI 수정하기 위한 메서드
     public void onConnectionStatus(String text) {
@@ -64,6 +73,10 @@ public class EditorController {
 
     public void onRemoteFullSync(String text) {
         ui.setFullDocument(text);
+    }
+
+    public void onRemoteCursor(String userId, int offset, int length) {
+        ui.showRemoteCursor(userId, offset, length);
     }
 
     public void onConnectionLost() {
