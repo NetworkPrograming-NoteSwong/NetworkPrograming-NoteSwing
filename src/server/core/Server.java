@@ -2,8 +2,6 @@ package server.core;
 
 import global.enums.Mode;
 import global.object.EditMessage;
-import server.core.manager.DocumentManager;
-import server.core.manager.LineLockManager;
 import server.ui.ServerDashboardUI;
 
 import java.io.IOException;
@@ -19,7 +17,6 @@ public class Server {
     private ServerSocket serverSocket;
     private ServerDashboardUI ui;
     private DocumentManager documentManager = new DocumentManager();
-    private LineLockManager lockManager = new LineLockManager();
     private List<ClientHandler> handlers = new ArrayList<>();
 
     public Server(int port, ServerDashboardUI ui) {
@@ -96,7 +93,8 @@ public class Server {
                 }
             }
             default -> {
-                if (msg.mode != Mode.CURSOR) {
+                // CURSOR / JOIN / LEAVE 를 제외한 나머지는 문서 상태에 반영
+                if (msg.mode != Mode.CURSOR && msg.mode != Mode.JOIN && msg.mode != Mode.LEAVE) {
                     documentManager.apply(msg);
                 }
                 for (ClientHandler handler : handlers) {
