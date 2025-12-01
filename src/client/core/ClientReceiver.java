@@ -23,12 +23,13 @@ public class ClientReceiver extends Thread {
             while (true) {
                 EditMessage msg = (EditMessage) in.readObject();
 
-                Mode mode = msg.mode;
-                switch (mode) {
+                switch (msg.mode) {
                     case INSERT -> controller.onRemoteInsert(msg.offset, msg.text);
                     case DELETE -> controller.onRemoteDelete(msg.offset, msg.length);
                     case FULL_SYNC -> controller.onRemoteFullSync(msg.text);
                     case CURSOR -> controller.onRemoteCursor(msg.userId, msg.offset, msg.length);
+                    case LOCK -> controller.onRemoteLock(msg.blockId, msg.userId);
+                    case UNLOCK -> controller.onRemoteUnlock(msg.blockId, msg.userId);
                     case IMAGE_INSERT ->
                             controller.onRemoteImageInsert(msg.blockId, msg.offset, msg.payload, msg.width, msg.height);
                     case IMAGE_RESIZE ->

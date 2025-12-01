@@ -1,8 +1,8 @@
-// src/client/controller/EditorController.java
 package client.controller;
 
 import client.core.Client;
 import client.ui.EditorMainUI;
+import global.object.EditMessage;
 import global.enums.Mode;
 import global.object.EditMessage;
 
@@ -51,8 +51,9 @@ public class EditorController {
         client.send(msg);
     }
 
-    // 다른 클라이언트가 커서 이동한 경우
+    //다른 클라이언트가 커서 이동한 경우
     public void onCursorMoved(int offset, int length) {
+        // 너무 자주 보내는게 부담이면 나중에 rate limit 플래그 추가 예정
         EditMessage msg = new EditMessage(Mode.CURSOR, userId, null);
         msg.offset = offset;
         msg.length = length;
@@ -96,6 +97,21 @@ public class EditorController {
         client.send(msg);
     }
 
+    // 내가 어떤 줄을 편집 시작할 때 호출
+    public void requestLockLine(int lineIndex) {
+        EditMessage msg = new EditMessage(Mode.LOCK, userId, null);
+        msg.blockId = lineIndex;   // lineIndex를 blockId로 사용
+        client.send(msg);
+    }
+
+    // 내가 그 줄 편집을 끝냈을 때 호출
+    public void requestUnlockLine(int lineIndex) {
+        EditMessage msg = new EditMessage(Mode.UNLOCK, userId, null);
+        msg.blockId = lineIndex;
+        client.send(msg);
+    }
+
+
     // ===== 클라이언트 UI 수정하기 위한 메서드 =====
     public void onConnectionStatus(String text) {
         ui.updateConnectionStatus(text);
@@ -126,7 +142,26 @@ public class EditorController {
         ui.applyImageResize(blockId, width, height);
     }
 
+    public void onRemoteLock(int lineIndex, String ownerUserId) {
+        // 1) 내가 잠근 줄이면 UI에 굳이 "다른 사람 잠금"으로 처리할 필요 없음
+        if (this.userId.equals(ownerUserId)) {
+            return;
+        }
+        // 2) 다른 사람이 잠근 줄만 UI에 전달
+        ui.lockLine(lineIndex, ownerUserId);
+    }
+
+    public void onRemoteUnlock(int lineIndex, String ownerUserId) {
+        // 내가 잠근 줄 해제라면 지금 단계에서는 아무 UI 행동 안 해도 되고,
+        // 다른 사람이 잠근 줄 해제라면, 더 이상 막지 않도록 UI에 알려야 함.
+        if (this.userId.equals(ownerUserId)) {
+            return;
+        }
+        ui.unlockLine(lineIndex);
+    }
+
     public void onConnectionLost() {
         ui.updateConnectionStatus("서버 연결 끊김");
     }
+
 }

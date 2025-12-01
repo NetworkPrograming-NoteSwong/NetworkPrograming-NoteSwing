@@ -2,7 +2,7 @@
 package client.ui;
 
 import client.controller.EditorController;
-import server.core.DocumentManager; // IMAGE_PLACEHOLDER와 맞추기용 (상수값만 공유)
+import server.core.manager.DocumentManager; // IMAGE_PLACEHOLDER와 맞추기용 (상수값만 공유)
 
 // Swing / 텍스트 관련
 import javax.imageio.ImageIO;
@@ -19,8 +19,10 @@ import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class EditorMainUI extends JFrame {
 
@@ -52,10 +54,21 @@ public class EditorMainUI extends JFrame {
     // 커서 하이라이트로 표시
     private final Map<String, Object> cursorHighlights = new HashMap<>();
 
+    // 다른 사용자가 잠근 줄들
+    private final Set<Integer> lockedLinesByOthers = new HashSet<>();
+
+    // 잠긴 줄 하이라이트 태그 (lineIndex -> tag)
+    private final Map<Integer, Object> lockHighlights = new HashMap<>();
+
+    private int myLockedLine = -1;   // 내가 현재 잠근 줄
+
     public EditorMainUI() {
         super("NoteSwing Client");
 
         buildGUI();
+        installDocumentFilter();
+
+        //lockLine(0, "otherUser");
 
         setSize(1000, 700);
         setLocationRelativeTo(null);               // 화면 중앙
@@ -128,6 +141,7 @@ public class EditorMainUI extends JFrame {
         p_sidebar.add(new JScrollPane(list_docs), BorderLayout.CENTER);
 
         // TODO: 문서 선택 이벤트도 나중에 컨트롤러에 연결
+        // list_docs.addListSelectionListener(new ListSelectionListener() { ... });
 
         JPanel p_editor = new JPanel(new BorderLayout());
         t_editor = new JTextPane();
@@ -138,6 +152,7 @@ public class EditorMainUI extends JFrame {
 
         // 이미지 드롭/붙여넣기 핸들러 등록
         setupImageTransferHandler();
+        p_editor.add(new JScrollPane(t_editor), BorderLayout.CENTER);
 
         // 좌우 분할
         JSplitPane split = new JSplitPane(
@@ -186,6 +201,8 @@ public class EditorMainUI extends JFrame {
                 try {
                     int offset = e.getOffset();
                     int length = e.getLength();
+                    int line = getLineOfOffset(offset);
+
                     String inserted = t_editor.getText().substring(offset, offset + length);
                     // 이미지 플레이스홀더 같은 것도 문자열에 포함될 수 있음
                     controller.onTextInserted(offset, inserted);
@@ -213,16 +230,106 @@ public class EditorMainUI extends JFrame {
         t_editor.addCaretListener(e -> {
             if (ignoreDocumentEvents) return;
 
-            int dot = e.getDot();   // 현재 커서 위치
-            int mark = e.getMark(); // 선택 시작 위치 (선택 없으면 dot와 같음)
+            int dot = e.getDot();
+            int mark = e.getMark();
 
             int start = Math.min(dot, mark);
-            int length = Math.abs(dot - mark); // 0이면 단일 커서
+            int length = Math.abs(dot - mark);
 
-            // 컨트롤러에게 “커서/선택 변경됨” 알림
+            // 1) 기존처럼 커서 정보 전송
             controller.onCursorMoved(start, length);
+
+            // 2) 현재 커서가 위치한 줄 구하기
+            try {
+                int currentLine = getLineOfOffset(start);
+
+                // 이미 내가 잠근 줄이면 아무것도 안 함
+                if (currentLine == myLockedLine) return;
+
+                // 다른 줄로 이동했다면, 이전 줄 UNLOCK
+                if (myLockedLine != -1) {
+                    controller.requestUnlockLine(myLockedLine);
+                }
+
+                // 새 줄에 LOCK 요청
+                controller.requestLockLine(currentLine);
+                myLockedLine = currentLine;
+
+            } catch (BadLocationException ex) {
+                // 무시
+            }
         });
     }
+
+    // ===== DocumentFilter: 잠긴 줄(line lock)은 아예 입력/삭제를 막는다 =====
+    private void installDocumentFilter() {
+        AbstractDocument doc = (AbstractDocument) t_editor.getDocument();
+        doc.setDocumentFilter(new DocumentFilter() {
+
+            @Override
+            public void insertString(FilterBypass fb, int offset, String str, AttributeSet attrs)
+                    throws BadLocationException {
+
+                if (!ignoreDocumentEvents && isLockedOffset(offset)) {
+                    JOptionPane.showMessageDialog(
+                            EditorMainUI.this,
+                            "🔒 이 줄은 다른 사용자가 편집 중입니다.",
+                            "편집 불가",
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+                    return; // 문서 변경 자체를 막음
+                }
+
+                super.insertString(fb, offset, str, attrs);
+            }
+
+            @Override
+            public void remove(FilterBypass fb, int offset, int length)
+                    throws BadLocationException {
+
+                if (!ignoreDocumentEvents && isLockedOffset(offset)) {
+                    JOptionPane.showMessageDialog(
+                            EditorMainUI.this,
+                            "🔒 이 줄은 다른 사용자가 편집 중입니다.",
+                            "편집 불가",
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+                    return;
+                }
+
+                super.remove(fb, offset, length);
+            }
+
+            @Override
+            public void replace(FilterBypass fb, int offset, int length,
+                                String text, AttributeSet attrs)
+                    throws BadLocationException {
+
+                if (!ignoreDocumentEvents && isLockedOffset(offset)) {
+                    JOptionPane.showMessageDialog(
+                            EditorMainUI.this,
+                            "🔒 이 줄은 다른 사용자가 편집 중입니다.",
+                            "편집 불가",
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+                    return;
+                }
+
+                super.replace(fb, offset, length, text, attrs);
+            }
+        });
+    }
+
+    // offset이 잠긴 줄에 속하는지 확인
+    private boolean isLockedOffset(int offset) {
+        try {
+            int line = getLineOfOffset(offset);
+            return lockedLinesByOthers.contains(line);
+        } catch (BadLocationException e) {
+            return false;
+        }
+    }
+
 
     // 다른 사용자가 편집한 결과를 우리 에디터에 반영할 때만 쓰는 메서드(밑에 3개)
     public void applyInsert(int offset, String text) {
@@ -273,7 +380,7 @@ public class EditorMainUI extends JFrame {
             Object tag = highlighter.addHighlight(
                     start, end,
                     new DefaultHighlighter.DefaultHighlightPainter(
-                            new Color(255, 255, 150)  // 노란색 같은 공통 색
+                            new Color(12, 136, 231)  // 노란색 같은 공통 색
                     )
             );
             cursorHighlights.put(userId, tag);
@@ -455,6 +562,49 @@ public class EditorMainUI extends JFrame {
         });
     }
 
+    // ===== 줄 잠금/해제 표시 (🔒 + 배경 하이라이트) =====
+    public void lockLine(int lineIndex, String ownerUserId) {
+        lockedLinesByOthers.add(lineIndex);
+
+        try {
+            int startOffset = getLineStartOffset(lineIndex);
+            int endOffset = getLineEndOffset(lineIndex);
+
+            Highlighter highlighter = t_editor.getHighlighter();
+
+            Object oldTag = lockHighlights.get(lineIndex);
+            if (oldTag != null) {
+                highlighter.removeHighlight(oldTag);
+            }
+
+            Object tag = highlighter.addHighlight(
+                    startOffset,
+                    endOffset,
+                    new DefaultHighlighter.DefaultHighlightPainter(
+                            new Color(255, 220, 220)
+                    )
+            );
+            lockHighlights.put(lineIndex, tag);
+
+            l_mode.setText("모드: TEXT  🔒 line " + (lineIndex + 1) + " (" + ownerUserId + ")");
+        } catch (BadLocationException ignored) {}
+    }
+
+
+    public void unlockLine(int lineIndex) {
+        lockedLinesByOthers.remove(lineIndex);
+
+        Object tag = lockHighlights.remove(lineIndex);
+        if (tag != null) {
+            t_editor.getHighlighter().removeHighlight(tag);
+        }
+
+        // 잠금 해제되면 기본 모드 텍스트로 복구 (필요하면 더 똑똑하게 바뀌게 가능)
+        l_mode.setText("모드: TEXT");
+    }
+
+
+
     /**
      * 로컬에서 이미지 하나를 삽입할 때 호출.
      * - 에디터의 현재 caret 위치 기준
@@ -518,4 +668,30 @@ public class EditorMainUI extends JFrame {
         registerDocumentListener(); // 문서 입력,삭제 관련 리스너
         registerCaretListener(); // 커서 관련 리스너
     }
+
+    // ===== JTextPane용 라인 계산 유틸 =====
+    private int getLineOfOffset(int offset) throws BadLocationException {
+        Element root = t_editor.getDocument().getDefaultRootElement();
+        return root.getElementIndex(offset);
+    }
+
+    private int getLineStartOffset(int line) throws BadLocationException {
+        Element root = t_editor.getDocument().getDefaultRootElement();
+        Element lineElem = root.getElement(line);
+        if (lineElem == null) {
+            throw new BadLocationException("No such line", t_editor.getDocument().getLength());
+        }
+        return lineElem.getStartOffset();
+    }
+
+    private int getLineEndOffset(int line) throws BadLocationException {
+        Element root = t_editor.getDocument().getDefaultRootElement();
+        Element lineElem = root.getElement(line);
+        if (lineElem == null) {
+            throw new BadLocationException("No such line", t_editor.getDocument().getLength());
+        }
+        return lineElem.getEndOffset();
+    }
+
+
 }

@@ -1,5 +1,4 @@
-// src/server/core/DocumentManager.java
-package server.core;
+package server.core.manager;
 
 import global.enums.Mode;
 import global.object.EditMessage;
