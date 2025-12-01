@@ -97,6 +97,21 @@ public class EditorController {
         client.send(msg);
     }
 
+    // 내가 어떤 줄을 편집 시작할 때 호출
+    public void requestLockLine(int lineIndex) {
+        EditMessage msg = new EditMessage(Mode.LOCK, userId, null);
+        msg.blockId = lineIndex;   // lineIndex를 blockId로 사용
+        client.send(msg);
+    }
+
+    // 내가 그 줄 편집을 끝냈을 때 호출
+    public void requestUnlockLine(int lineIndex) {
+        EditMessage msg = new EditMessage(Mode.UNLOCK, userId, null);
+        msg.blockId = lineIndex;
+        client.send(msg);
+    }
+
+
     // ===== 클라이언트 UI 수정하기 위한 메서드 =====
     public void onConnectionStatus(String text) {
         ui.updateConnectionStatus(text);

@@ -2,6 +2,8 @@ package server.core;
 
 import global.enums.Mode;
 import global.object.EditMessage;
+import server.core.manager.DocumentManager;
+import server.core.manager.LineLockManager;
 import server.ui.ServerDashboardUI;
 
 import java.io.IOException;
@@ -17,6 +19,7 @@ public class Server {
     private ServerSocket serverSocket;
     private ServerDashboardUI ui;
     private DocumentManager documentManager = new DocumentManager();
+    private LineLockManager lockManager = new LineLockManager();
     private List<ClientHandler> handlers = new ArrayList<>();
 
     public Server(int port, ServerDashboardUI ui) {

@@ -60,13 +60,15 @@ public class EditorMainUI extends JFrame {
     // 잠긴 줄 하이라이트 태그 (lineIndex -> tag)
     private final Map<Integer, Object> lockHighlights = new HashMap<>();
 
+    private int myLockedLine = -1;   // 내가 현재 잠근 줄
+
     public EditorMainUI() {
         super("NoteSwing Client");
 
         buildGUI();
         installDocumentFilter();
 
-        lockLine(0, "otherUser");
+        //lockLine(0, "otherUser");
 
         setSize(1000, 700);
         setLocationRelativeTo(null);               // 화면 중앙
@@ -228,14 +230,34 @@ public class EditorMainUI extends JFrame {
         t_editor.addCaretListener(e -> {
             if (ignoreDocumentEvents) return;
 
-            int dot = e.getDot();   // 현재 커서 위치
-            int mark = e.getMark(); // 선택 시작 위치 (선택 없으면 dot와 같음)
+            int dot = e.getDot();
+            int mark = e.getMark();
 
             int start = Math.min(dot, mark);
-            int length = Math.abs(dot - mark); // 0이면 단일 커서
+            int length = Math.abs(dot - mark);
 
-            // 컨트롤러에게 “커서/선택 변경됨” 알림
+            // 1) 기존처럼 커서 정보 전송
             controller.onCursorMoved(start, length);
+
+            // 2) 현재 커서가 위치한 줄 구하기
+            try {
+                int currentLine = getLineOfOffset(start);
+
+                // 이미 내가 잠근 줄이면 아무것도 안 함
+                if (currentLine == myLockedLine) return;
+
+                // 다른 줄로 이동했다면, 이전 줄 UNLOCK
+                if (myLockedLine != -1) {
+                    controller.requestUnlockLine(myLockedLine);
+                }
+
+                // 새 줄에 LOCK 요청
+                controller.requestLockLine(currentLine);
+                myLockedLine = currentLine;
+
+            } catch (BadLocationException ex) {
+                // 무시
+            }
         });
     }
 

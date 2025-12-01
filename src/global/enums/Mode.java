@@ -8,8 +8,8 @@ public enum Mode {
     LEAVE,         // 클라이언트 퇴장
     CURSOR,        // 커서 위치
     IMAGE_INSERT,  // 이미지 삽입
-    IMAGE_RESIZE,   // 이미지 크기 변경 (향후 확장용)
+    IMAGE_RESIZE,  // 이미지 크기 변경 (향후 확장용)
     LOCK,          // 특정 줄 잠금 요청/브로드캐스트
-    UNLOCK;         // 잠금 해제
+    UNLOCK;        // 잠금 해제
 }
 
