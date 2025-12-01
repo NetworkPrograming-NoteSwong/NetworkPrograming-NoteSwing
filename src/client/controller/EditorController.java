@@ -1,15 +1,19 @@
+// src/client/controller/EditorController.java
 package client.controller;
 
 import client.core.Client;
 import client.ui.EditorMainUI;
-import global.object.EditMessage;
 import global.enums.Mode;
+import global.object.EditMessage;
 
 public class EditorController {
 
     private final Client client;
     private final EditorMainUI ui;
     private final String userId;
+
+    // 클라이언트 로컬에서 이미지 ID를 만들기 위한 시퀀스
+    private int imageSeq = 1;
 
     public EditorController(EditorMainUI ui, String userId) {
         this.ui = ui;
@@ -47,17 +51,52 @@ public class EditorController {
         client.send(msg);
     }
 
-    //다른 클라이언트가 커서 이동한 경우
+    // 다른 클라이언트가 커서 이동한 경우
     public void onCursorMoved(int offset, int length) {
-        // 너무 자주 보내는게 부담이면 나중에 rate limit 플래그 추가 예정
         EditMessage msg = new EditMessage(Mode.CURSOR, userId, null);
         msg.offset = offset;
         msg.length = length;
         client.send(msg);
     }
 
+    // === 이미지 삽입 (로컬에서 이미지 넣을 때 호출) ===
 
-    // 클라이언트 UI 수정하기 위한 메서드
+    private int nextImageId() {
+        // 아주 간단한 유니크 ID 생성 (userId 기반 + 로컬 증가값)
+        return (userId.hashCode() & 0x7fffffff) ^ (imageSeq++);
+    }
+
+    /**
+     * 로컬에서 이미지 삽입 시 호출.
+     * 서버로 IMAGE_INSERT 메시지를 보내고, 사용한 blockId를 반환.
+     */
+    public int onImageInserted(int offset, byte[] data, int width, int height) {
+        int blockId = nextImageId();
+
+        EditMessage msg = new EditMessage(Mode.IMAGE_INSERT, userId, null);
+        msg.blockId = blockId;
+        msg.offset = offset;
+        msg.payload = data;
+        msg.width = width;
+        msg.height = height;
+
+        client.send(msg);
+        return blockId;
+    }
+
+    /**
+     * 이미지 리사이즈 (향후 마우스휠/우클릭 메뉴에서 호출 예정)
+     */
+    public void onImageResized(int blockId, int newWidth, int newHeight) {
+        EditMessage msg = new EditMessage(Mode.IMAGE_RESIZE, userId, null);
+        msg.blockId = blockId;
+        msg.width = newWidth;
+        msg.height = newHeight;
+
+        client.send(msg);
+    }
+
+    // ===== 클라이언트 UI 수정하기 위한 메서드 =====
     public void onConnectionStatus(String text) {
         ui.updateConnectionStatus(text);
     }
@@ -79,8 +118,15 @@ public class EditorController {
         ui.showRemoteCursor(userId, offset, length);
     }
 
+    public void onRemoteImageInsert(int blockId, int offset, byte[] data, int width, int height) {
+        ui.applyImageInsert(blockId, offset, data, width, height);
+    }
+
+    public void onRemoteImageResize(int blockId, int width, int height) {
+        ui.applyImageResize(blockId, width, height);
+    }
+
     public void onConnectionLost() {
         ui.updateConnectionStatus("서버 연결 끊김");
     }
-
 }
