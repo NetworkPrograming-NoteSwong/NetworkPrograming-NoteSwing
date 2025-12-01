@@ -2,6 +2,8 @@ package server.core;
 
 import global.enums.Mode;
 import global.object.EditMessage;
+import server.core.manager.DocumentManager;
+import server.core.manager.LineLockManager;
 import server.ui.ServerDashboardUI;
 
 import java.io.IOException;
@@ -16,7 +18,8 @@ public class Server {
     private volatile boolean running = false;
     private ServerSocket serverSocket;
     private ServerDashboardUI ui;
-    private DocumentManager doc = new DocumentManager();
+    private DocumentManager documentManager = new DocumentManager();
+    private LineLockManager lockManager = new LineLockManager();
     private List<ClientHandler> handlers = new ArrayList<>();
 
     public Server(int port, ServerDashboardUI ui) {
@@ -37,7 +40,7 @@ public class Server {
                 ClientHandler handler = new ClientHandler(socket, this, ui);
                 handlers.add(handler);
 
-                String current = doc.getDocument();
+                String current = documentManager.getDocument();
                 if (!current.isEmpty()) {
                     EditMessage full = new EditMessage(Mode.FULL_SYNC, "server", current);
                     ui.printDisplay("[FULL_SYNC 전송] 새 클라이언트에게 전체 문서 전송: " + full);
@@ -66,15 +69,41 @@ public class Server {
 
     public synchronized void broadcast(EditMessage msg, ClientHandler sender) {
         ui.printDisplay("[메시지 수신] " + msg);
-        doc.apply(msg);
 
-        if (msg.mode != Mode.CURSOR) {
-            doc.apply(msg);    // 커서는 문서 상태 안 바꿈
-        }
+        switch (msg.mode) {
+            case LOCK -> {
+                int line = msg.blockId;
+                String userId = msg.userId;
 
-        for (ClientHandler handler : handlers) {
-            if (handler == sender) continue;
-            handler.send(msg);
+                boolean ok = lockManager.tryLock(line, userId);
+
+                if (ok) {
+                    // 잠금 성공: 모든 클라이언트에게 이 줄이 userId에게 잠겼다고 알림
+                    for (ClientHandler handler : handlers) {
+                        handler.send(msg);
+                    }
+                }
+            }
+            case UNLOCK -> {
+                int line = msg.blockId;
+                String userId = msg.userId;
+
+                lockManager.unlock(line, userId);
+
+                // 잠금 해제도 브로드캐스트
+                for (ClientHandler handler : handlers) {
+                    handler.send(msg);
+                }
+            }
+            default -> {
+                if (msg.mode != Mode.CURSOR) {
+                    documentManager.apply(msg);
+                }
+                for (ClientHandler handler : handlers) {
+                    if (handler == sender) continue;
+                    handler.send(msg);
+                }
+            }
         }
     }
 

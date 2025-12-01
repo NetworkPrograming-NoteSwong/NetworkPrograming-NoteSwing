@@ -79,6 +79,24 @@ public class EditorController {
         ui.showRemoteCursor(userId, offset, length);
     }
 
+    public void onRemoteLock(int lineIndex, String ownerUserId) {
+        // 1) 내가 잠근 줄이면 UI에 굳이 "다른 사람 잠금"으로 처리할 필요 없음
+        if (this.userId.equals(ownerUserId)) {
+            return;
+        }
+        // 2) 다른 사람이 잠근 줄만 UI에 전달
+        ui.lockLine(lineIndex, ownerUserId);
+    }
+
+    public void onRemoteUnlock(int lineIndex, String ownerUserId) {
+        // 내가 잠근 줄 해제라면 지금 단계에서는 아무 UI 행동 안 해도 되고,
+        // 다른 사람이 잠근 줄 해제라면, 더 이상 막지 않도록 UI에 알려야 함.
+        if (this.userId.equals(ownerUserId)) {
+            return;
+        }
+        ui.unlockLine(lineIndex);
+    }
+
     public void onConnectionLost() {
         ui.updateConnectionStatus("서버 연결 끊김");
     }

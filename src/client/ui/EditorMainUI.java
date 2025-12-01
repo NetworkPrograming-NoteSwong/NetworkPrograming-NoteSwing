@@ -6,12 +6,12 @@ import client.controller.EditorController;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import javax.swing.text.BadLocationException;
-import javax.swing.text.DefaultHighlighter;
-import javax.swing.text.Highlighter;
+import javax.swing.text.*;
 import java.awt.*;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 public class EditorMainUI extends JFrame {
 
@@ -39,10 +39,19 @@ public class EditorMainUI extends JFrame {
     //커서 하이라이트로 표시
     private Map<String, Object> cursorHighlights = new HashMap<>();
 
+    // 다른 사용자가 잠근 줄들
+    private final Set<Integer> lockedLinesByOthers = new HashSet<>();
+
+    // 잠긴 줄 하이라이트 태그 (lineIndex -> tag)
+    private final Map<Integer, Object> lockHighlights = new HashMap<>();
+
     public EditorMainUI() {
         super("NoteSwing Client");
 
         buildGUI();
+        installDocumentFilter();
+
+        lockLine(0, "otherUser");
 
         setSize(1000, 700);
         setLocationRelativeTo(null);               // 화면 중앙
@@ -129,7 +138,6 @@ public class EditorMainUI extends JFrame {
         t_editor = new JTextArea();
         t_editor.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
 
-
         p_editor.add(new JScrollPane(t_editor), BorderLayout.CENTER);
 
         // 좌우 분할
@@ -179,6 +187,8 @@ public class EditorMainUI extends JFrame {
                 try {
                     int offset = e.getOffset();
                     int length = e.getLength();
+                    int line = t_editor.getLineOfOffset(offset);
+
                     String inserted = t_editor.getText().substring(offset, offset + length);
                     controller.onTextInserted(offset, inserted);
                 } catch (Exception ignored) {}
@@ -217,6 +227,74 @@ public class EditorMainUI extends JFrame {
         });
     }
 
+    // ===== DocumentFilter: 잠긴 줄(line lock)은 아예 입력/삭제를 막는다 =====
+    private void installDocumentFilter() {
+        AbstractDocument doc = (AbstractDocument) t_editor.getDocument();
+        doc.setDocumentFilter(new DocumentFilter() {
+
+            @Override
+            public void insertString(FilterBypass fb, int offset, String str, AttributeSet attrs)
+                    throws BadLocationException {
+
+                if (!ignoreDocumentEvents && isLockedOffset(offset)) {
+                    JOptionPane.showMessageDialog(
+                            EditorMainUI.this,
+                            "🔒 이 줄은 다른 사용자가 편집 중입니다.",
+                            "편집 불가",
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+                    return; // 문서 변경 자체를 막음
+                }
+
+                super.insertString(fb, offset, str, attrs);
+            }
+
+            @Override
+            public void remove(FilterBypass fb, int offset, int length)
+                    throws BadLocationException {
+
+                if (!ignoreDocumentEvents && isLockedOffset(offset)) {
+                    JOptionPane.showMessageDialog(
+                            EditorMainUI.this,
+                            "🔒 이 줄은 다른 사용자가 편집 중입니다.",
+                            "편집 불가",
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+                    return;
+                }
+
+                super.remove(fb, offset, length);
+            }
+
+            @Override
+            public void replace(FilterBypass fb, int offset, int length,
+                                String text, AttributeSet attrs)
+                    throws BadLocationException {
+
+                if (!ignoreDocumentEvents && isLockedOffset(offset)) {
+                    JOptionPane.showMessageDialog(
+                            EditorMainUI.this,
+                            "🔒 이 줄은 다른 사용자가 편집 중입니다.",
+                            "편집 불가",
+                            JOptionPane.INFORMATION_MESSAGE
+                    );
+                    return;
+                }
+
+                super.replace(fb, offset, length, text, attrs);
+            }
+        });
+    }
+
+    // offset이 잠긴 줄에 속하는지 확인
+    private boolean isLockedOffset(int offset) {
+        try {
+            int line = t_editor.getLineOfOffset(offset);
+            return lockedLinesByOthers.contains(line);
+        } catch (BadLocationException e) {
+            return false;
+        }
+    }
 
 
     // 다른 사용자가 편집한 결과를 우리 에디터에 반영할 때만 쓰는 메서드(밑에 3개)
@@ -258,12 +336,57 @@ public class EditorMainUI extends JFrame {
             Object tag = highlighter.addHighlight(
                     start, end,
                     new DefaultHighlighter.DefaultHighlightPainter(
-                            new Color(255, 255, 150)  // 노란색 같은 공통 색
+                            new Color(12, 136, 231)  // 노란색 같은 공통 색
                     )
             );
             cursorHighlights.put(userId, tag);
         } catch (BadLocationException ignored) {}
     }
+
+    // ===== 줄 잠금/해제 표시 (🔒 + 배경 하이라이트) =====
+    public void lockLine(int lineIndex, String ownerUserId) {
+        lockedLinesByOthers.add(lineIndex);
+
+        try {
+            int startOffset = t_editor.getLineStartOffset(lineIndex);
+            int endOffset = t_editor.getLineEndOffset(lineIndex);
+
+            Highlighter highlighter = t_editor.getHighlighter();
+
+            // 기존 하이라이트 제거
+            Object oldTag = lockHighlights.get(lineIndex);
+            if (oldTag != null) {
+                highlighter.removeHighlight(oldTag);
+            }
+
+            // 연한 빨간색 정도로 줄 전체 하이라이트
+            Object tag = highlighter.addHighlight(
+                    startOffset,
+                    endOffset,
+                    new DefaultHighlighter.DefaultHighlightPainter(
+                            new Color(255, 220, 220)
+                    )
+            );
+            lockHighlights.put(lineIndex, tag);
+
+            // 상태바에 이모지로 잠금 표시
+            l_mode.setText("모드: TEXT  🔒 line " + (lineIndex + 1) + " (" + ownerUserId + ")");
+        } catch (BadLocationException ignored) {}
+    }
+
+    public void unlockLine(int lineIndex) {
+        lockedLinesByOthers.remove(lineIndex);
+
+        Object tag = lockHighlights.remove(lineIndex);
+        if (tag != null) {
+            t_editor.getHighlighter().removeHighlight(tag);
+        }
+
+        // 잠금 해제되면 기본 모드 텍스트로 복구 (필요하면 더 똑똑하게 바뀌게 가능)
+        l_mode.setText("모드: TEXT");
+    }
+
+
 
 
     //setter 메서드 (컨트롤러 주입)

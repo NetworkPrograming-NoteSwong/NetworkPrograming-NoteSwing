@@ -6,6 +6,8 @@ public enum Mode {
     FULL_SYNC,      // 전체 문서 동기화
     JOIN,           // 클라이언트 접속
     LEAVE,          // 클라이언트 퇴장
-    CURSOR          // 커서 위치
+    CURSOR,          // 커서 위치
+    LOCK,           // 특정 줄 잠금 요청/브로드캐스트
+    UNLOCK          // 잠금 해제
 }
 

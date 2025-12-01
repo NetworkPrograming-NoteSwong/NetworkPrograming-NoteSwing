@@ -25,6 +25,8 @@ public class ClientReceiver extends Thread {
                     case DELETE -> controller.onRemoteDelete(msg.offset, msg.length);
                     case FULL_SYNC -> controller.onRemoteFullSync(msg.text);
                     case CURSOR -> controller.onRemoteCursor(msg.userId, msg.offset, msg.length);
+                    case LOCK -> controller.onRemoteLock(msg.blockId, msg.userId);
+                    case UNLOCK -> controller.onRemoteUnlock(msg.blockId, msg.userId);
                 }
             }
         } catch (Exception e) {

@@ -1,4 +1,4 @@
-package server.core;
+package server.core.manager;
 
 import global.object.EditMessage;
 
