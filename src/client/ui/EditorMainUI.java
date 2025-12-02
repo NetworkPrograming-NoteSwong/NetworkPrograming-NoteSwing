@@ -18,11 +18,11 @@ import java.awt.image.BufferedImage;
 // 유틸
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.util.HashMap;
-import java.util.HashSet;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.Timer;
+import java.awt.event.InputMethodListener;
+import java.awt.event.InputMethodEvent;
 
 public class EditorMainUI extends JFrame {
 
@@ -61,6 +61,27 @@ public class EditorMainUI extends JFrame {
     private final Map<Integer, Object> lockHighlights = new HashMap<>();
 
     private int myLockedLine = -1;   // 내가 현재 잠근 줄
+
+    // ===== 배치 처리 관련 (추가) =====
+    private Timer insertBatchTimer;
+    private StringBuilder pendingInsertText = new StringBuilder();
+    private int pendingInsertOffset = -1;
+
+    private Timer deleteBatchTimer;
+    private Queue<DeleteOperation> pendingDeleteOps = new LinkedList<>();
+
+    //삭제 작업을 저장하는 내부 클래스
+    private static class DeleteOperation {
+        int offset;
+        int length;
+        DeleteOperation(int offset, int length) {
+            this.offset = offset;
+            this.length = length;
+        }
+    }
+
+    //한글 IME 조합 중 플래그
+    private boolean imeComposing = false;
 
     public EditorMainUI() {
         super("NoteSwing Client");
@@ -201,19 +222,62 @@ public class EditorMainUI extends JFrame {
                 try {
                     int offset = e.getOffset();
                     int length = e.getLength();
-                    int line = getLineOfOffset(offset);
-
                     String inserted = t_editor.getText().substring(offset, offset + length);
-                    // 이미지 플레이스홀더 같은 것도 문자열에 포함될 수 있음
-                    controller.onTextInserted(offset, inserted);
-                } catch (Exception ignored) {
-                }
+
+                    // ⭐ IME 조합 중이면: 서버에 바로 보내지 말고, 배치 큐에만 쌓는다
+                    if (imeComposing) {
+                        // 한글 조합 중에 여러 번 이벤트가 나와도
+                        // flush는 조합 완료 시점(InputMethodListener)에서 한 번만 일어난다.
+                        if (pendingInsertOffset == -1) {
+                            pendingInsertOffset = offset;
+                        }
+                        pendingInsertText.append(inserted);
+                        return;
+                    }
+
+                    // ⭐ IME 조합이 아닐 때(영어/숫자 등) → 50ms 배치 처리
+                    if (pendingInsertOffset == -1) {
+                        pendingInsertOffset = offset;
+                    }
+                    pendingInsertText.append(inserted);
+
+                    if (insertBatchTimer != null) {
+                        insertBatchTimer.cancel();
+                    }
+                    insertBatchTimer = new Timer();
+                    insertBatchTimer.schedule(new TimerTask() {
+                        @Override
+                        public void run() {
+                            flushPendingInsert();
+                        }
+                    }, 50);
+
+                } catch (Exception ignored) {}
             }
 
             @Override
             public void removeUpdate(DocumentEvent e) {
                 if (ignoreDocumentEvents) return;
-                controller.onTextDeleted(e.getOffset(), e.getLength());
+                int offset = e.getOffset();
+                int length = e.getLength();
+
+                // ⭐ IME 조합 중이면: 삭제도 배치 큐에만 쌓고, flush는 조합 완료시
+                pendingDeleteOps.offer(new DeleteOperation(offset, length));
+                if (imeComposing) {
+                    return;
+                }
+
+                // ⭐ IME 조합이 아닐 때 → 50ms 배치 삭제
+                if (deleteBatchTimer != null) {
+                    deleteBatchTimer.cancel();
+                }
+                deleteBatchTimer = new Timer();
+                deleteBatchTimer.schedule(new TimerTask() {
+                    @Override
+                    public void run() {
+                        flushPendingDeletes();
+                    }
+                }, 50);
             }
 
             @Override
@@ -232,12 +296,10 @@ public class EditorMainUI extends JFrame {
 
             int dot = e.getDot();
             int mark = e.getMark();
-
             int start = Math.min(dot, mark);
-            int length = Math.abs(dot - mark);
 
             // 1) 기존처럼 커서 정보 전송
-            controller.onCursorMoved(start, length);
+            //controller.onCursorMoved(start, length);
 
             // 2) 현재 커서가 위치한 줄 구하기
             try {
@@ -260,6 +322,34 @@ public class EditorMainUI extends JFrame {
             }
         });
     }
+
+    //한글 IME 조합 상태 감지
+    private void registerImeListener() {
+        t_editor.addInputMethodListener(new InputMethodListener() {
+            @Override
+            public void inputMethodTextChanged(InputMethodEvent e) {
+                int committed = e.getCommittedCharacterCount();
+
+                if (committed == 0) {
+                    // 아직 조합 중 (예: 'ㄱ', '가'로 바뀌는 도중)
+                    imeComposing = true;
+                } else {
+                    // 조합이 끝나서 최종 글자가 확정된 상태
+                    imeComposing = false;
+
+                    // 이 시점에만 서버로 배치된 변경 전송
+                    flushPendingInsert();
+                    flushPendingDeletes();
+                }
+            }
+
+            @Override
+            public void caretPositionChanged(InputMethodEvent e) {
+                // 한글 조합 중 캐럿 이동 (지금은 따로 처리 안 함)
+            }
+        });
+    }
+
 
     // ===== DocumentFilter: 잠긴 줄(line lock)은 아예 입력/삭제를 막는다 =====
     private void installDocumentFilter() {
@@ -603,6 +693,70 @@ public class EditorMainUI extends JFrame {
         l_mode.setText("모드: TEXT");
     }
 
+    //배치된 INSERT 메시지 한 번에 전송
+    private void flushPendingInsert() {
+        if (pendingInsertText.length() == 0) return;
+
+        try {
+            int offset = pendingInsertOffset;
+            String text = pendingInsertText.toString();
+            int line = getLineOfOffset(offset);
+
+            // LOCK 체크
+            if (myLockedLine != line) {
+                if (myLockedLine != -1) {
+                    controller.requestUnlockLine(myLockedLine);
+                }
+                controller.requestLockLine(line);
+                myLockedLine = line;
+            }
+
+            // 배치된 텍스트 한 번에 전송
+            controller.onTextInserted(offset, text);
+
+            // 초기화
+            pendingInsertText.setLength(0);
+            pendingInsertOffset = -1;
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    // 배치된 DELETE 메시지 한 번에 전송
+    private void flushPendingDeletes() {
+        if (pendingDeleteOps.isEmpty()) return;
+
+        try {
+            DeleteOperation firstOp = pendingDeleteOps.poll();
+            int totalOffset = firstOp.offset;
+            int totalLength = firstOp.length;
+
+            while (!pendingDeleteOps.isEmpty()) {
+                DeleteOperation op = pendingDeleteOps.poll();
+                if (op.offset <= totalOffset + totalLength) {
+                    totalLength += op.length;
+                }
+            }
+
+            int line = getLineOfOffset(totalOffset);
+
+            // LOCK 체크
+            if (myLockedLine != line) {
+                if (myLockedLine != -1) {
+                    controller.requestUnlockLine(myLockedLine);
+                }
+                controller.requestLockLine(line);
+                myLockedLine = line;
+            }
+
+            // 배치된 삭제 한 번에 전송
+            controller.onTextDeleted(totalOffset, totalLength);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
 
     /**
@@ -667,6 +821,7 @@ public class EditorMainUI extends JFrame {
         this.controller = controller;
         registerDocumentListener(); // 문서 입력,삭제 관련 리스너
         registerCaretListener(); // 커서 관련 리스너
+        registerImeListener(); // IME 조합 상태 리스너
     }
 
     // ===== JTextPane용 라인 계산 유틸 =====
