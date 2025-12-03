@@ -1,3 +1,4 @@
+// src/client/controller/EditorController.java
 package client.controller;
 
 import client.core.Client;
@@ -5,6 +6,10 @@ import client.ui.EditorMainUI;
 import global.object.EditMessage;
 import global.enums.Mode;
 
+/**
+ * UI와 네트워크 계층의 조율자
+ * 비즈니스 로직 담당
+ */
 public class EditorController {
 
     private final Client client;
@@ -14,7 +19,7 @@ public class EditorController {
     public EditorController(EditorMainUI ui, String userId) {
         this.ui = ui;
         this.userId = userId;
-        this.client = new Client(this);   // Client는 Controller에 의존
+        this.client = new Client(this);
     }
 
     public void start() {
@@ -38,7 +43,6 @@ public class EditorController {
         client.send(msg);
     }
 
-    // 문서 전체가 바뀐 경우(FULL_SYNC 요청용)
     public void onFullDocumentChanged(String fullText) {
         EditMessage msg = new EditMessage(Mode.FULL_SYNC, userId, fullText);
         msg.offset = 0;
@@ -47,8 +51,6 @@ public class EditorController {
         client.send(msg);
     }
 
-
-    // 클라이언트 UI 수정하기 위한 메서드
     public void onConnectionStatus(String text) {
         ui.updateConnectionStatus(text);
     }
@@ -69,5 +71,4 @@ public class EditorController {
     public void onConnectionLost() {
         ui.updateConnectionStatus("서버 연결 끊김");
     }
-
 }
