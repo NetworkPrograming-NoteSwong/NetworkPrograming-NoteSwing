@@ -2,34 +2,15 @@
 package client.ui;
 
 import client.controller.EditorController;
-import server.core.manager.DocumentManager; // IMAGE_PLACEHOLDER와 맞추기용 (상수값만 공유)
 
-// Swing / 텍스트 관련
-import javax.imageio.ImageIO;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
-import javax.swing.text.*;
 import java.awt.*;
-import java.awt.datatransfer.DataFlavor;
-import java.awt.datatransfer.Transferable;
-import java.awt.image.BufferedImage;
-
-// 유틸
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.util.*;
-import java.util.List;
-import java.util.Timer;
-import java.awt.event.InputMethodListener;
-import java.awt.event.InputMethodEvent;
 
 public class EditorMainUI extends JFrame {
 
-    // 이미지 플레이스홀더 문자 (서버 DocumentManager와 동일 값 사용)
-    private static final char IMAGE_PLACEHOLDER = DocumentManager.IMAGE_PLACEHOLDER;
-
-    // 컨트롤러
+    //컨트롤러
     private EditorController controller;
 
     // 상단 바 컴포넌트
@@ -41,8 +22,7 @@ public class EditorMainUI extends JFrame {
     private JList<String> list_docs;
 
     // 중앙 코드 에디터
-    private JTextPane t_editor;
-    private JScrollPane editorScrollPane;
+    private JTextArea t_editor;
 
     // 하단 상태바
     private JLabel l_connectionStatus;
@@ -51,45 +31,10 @@ public class EditorMainUI extends JFrame {
     // Document 이벤트 플래그 변수
     private boolean ignoreDocumentEvents = false;
 
-    // 커서 하이라이트로 표시
-    private final Map<String, Object> cursorHighlights = new HashMap<>();
-
-    // 다른 사용자가 잠근 줄들
-    private final Set<Integer> lockedLinesByOthers = new HashSet<>();
-
-    // 잠긴 줄 하이라이트 태그 (lineIndex -> tag)
-    private final Map<Integer, Object> lockHighlights = new HashMap<>();
-
-    private int myLockedLine = -1;   // 내가 현재 잠근 줄
-
-    // ===== 배치 처리 관련 (추가) =====
-    private Timer insertBatchTimer;
-    private StringBuilder pendingInsertText = new StringBuilder();
-    private int pendingInsertOffset = -1;
-
-    private Timer deleteBatchTimer;
-    private Queue<DeleteOperation> pendingDeleteOps = new LinkedList<>();
-
-    //삭제 작업을 저장하는 내부 클래스
-    private static class DeleteOperation {
-        int offset;
-        int length;
-        DeleteOperation(int offset, int length) {
-            this.offset = offset;
-            this.length = length;
-        }
-    }
-
-    //한글 IME 조합 중 플래그
-    private boolean imeComposing = false;
-
     public EditorMainUI() {
         super("NoteSwing Client");
 
         buildGUI();
-        installDocumentFilter();
-
-        //lockLine(0, "otherUser");
 
         setSize(1000, 700);
         setLocationRelativeTo(null);               // 화면 중앙
@@ -129,8 +74,16 @@ public class EditorMainUI extends JFrame {
         b_logout.setEnabled(false);        // 초기에는 비활성화
 
         // TODO: 나중에 컨트롤러 연결해서 이벤트 처리
-        // b_login.addActionListener(e -> controller.onClickLogin());
-        // b_logout.addActionListener(e -> controller.onClickLogout());
+        // b_login.addActionListener(new ActionListener() {
+        //     public void actionPerformed(ActionEvent e) {
+        //         controller.onClickLogin();
+        //     }
+        // });
+        // b_logout.addActionListener(new ActionListener() {
+        //     public void actionPerformed(ActionEvent e) {
+        //         controller.onClickLogout();
+        //     }
+        // });
 
         p_right.add(l_loginStatus);
         p_right.add(b_login);
@@ -153,26 +106,21 @@ public class EditorMainUI extends JFrame {
         l_sideTitle.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         p_sidebar.add(l_sideTitle, BorderLayout.NORTH);
 
-        DefaultListModel<String> model = new DefaultListModel<>();
+        DefaultListModel<String> model = new DefaultListModel<String>();
         model.addElement("Untitled Document");
         model.addElement("Project Plan");
         model.addElement("README.md");
 
-        list_docs = new JList<>(model);
+        list_docs = new JList<String>(model);
         p_sidebar.add(new JScrollPane(list_docs), BorderLayout.CENTER);
 
         // TODO: 문서 선택 이벤트도 나중에 컨트롤러에 연결
         // list_docs.addListSelectionListener(new ListSelectionListener() { ... });
 
         JPanel p_editor = new JPanel(new BorderLayout());
-        t_editor = new JTextPane();
+        t_editor = new JTextArea();
         t_editor.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
 
-        editorScrollPane = new JScrollPane(t_editor);
-        p_editor.add(editorScrollPane, BorderLayout.CENTER);
-
-        // 이미지 드롭/붙여넣기 핸들러 등록
-        setupImageTransferHandler();
         p_editor.add(new JScrollPane(t_editor), BorderLayout.CENTER);
 
         // 좌우 분할
@@ -211,7 +159,7 @@ public class EditorMainUI extends JFrame {
         l_connectionStatus.setText(text);
     }
 
-    // 내가 직접 타이핑/삭제한 변경을 감지해서 컨트롤러에 알려주는 역할
+    // 내가 직접 타이핑/삭제한 변경을 감지해서 컨트롤러에 알려주는 역할(컨트롤러가 객체로 만들어 서버로 전송)
     private void registerDocumentListener() {
         t_editor.getDocument().addDocumentListener(new DocumentListener() {
 
@@ -223,222 +171,39 @@ public class EditorMainUI extends JFrame {
                     int offset = e.getOffset();
                     int length = e.getLength();
                     String inserted = t_editor.getText().substring(offset, offset + length);
-
-                    // ⭐ IME 조합 중이면: 서버에 바로 보내지 말고, 배치 큐에만 쌓는다
-                    if (imeComposing) {
-                        // 한글 조합 중에 여러 번 이벤트가 나와도
-                        // flush는 조합 완료 시점(InputMethodListener)에서 한 번만 일어난다.
-                        if (pendingInsertOffset == -1) {
-                            pendingInsertOffset = offset;
-                        }
-                        pendingInsertText.append(inserted);
-                        return;
-                    }
-
-                    // ⭐ IME 조합이 아닐 때(영어/숫자 등) → 50ms 배치 처리
-                    if (pendingInsertOffset == -1) {
-                        pendingInsertOffset = offset;
-                    }
-                    pendingInsertText.append(inserted);
-
-                    if (insertBatchTimer != null) {
-                        insertBatchTimer.cancel();
-                    }
-                    insertBatchTimer = new Timer();
-                    insertBatchTimer.schedule(new TimerTask() {
-                        @Override
-                        public void run() {
-                            flushPendingInsert();
-                        }
-                    }, 50);
-
+                    controller.onTextInserted(offset, inserted);
                 } catch (Exception ignored) {}
             }
 
             @Override
             public void removeUpdate(DocumentEvent e) {
                 if (ignoreDocumentEvents) return;
-                int offset = e.getOffset();
-                int length = e.getLength();
-
-                // ⭐ IME 조합 중이면: 삭제도 배치 큐에만 쌓고, flush는 조합 완료시
-                pendingDeleteOps.offer(new DeleteOperation(offset, length));
-                if (imeComposing) {
-                    return;
-                }
-
-                // ⭐ IME 조합이 아닐 때 → 50ms 배치 삭제
-                if (deleteBatchTimer != null) {
-                    deleteBatchTimer.cancel();
-                }
-                deleteBatchTimer = new Timer();
-                deleteBatchTimer.schedule(new TimerTask() {
-                    @Override
-                    public void run() {
-                        flushPendingDeletes();
-                    }
-                }, 50);
+                controller.onTextDeleted(e.getOffset(), e.getLength());
             }
 
             @Override
             public void changedUpdate(DocumentEvent e) {
                 if (ignoreDocumentEvents) return;
-                // StyledDocument에서 속성 변경 시 호출됨 (아이콘 삽입 등은 ignore 플래그로 무시)
+                // 스타일/속성 변화 등으로 문서가 바뀌었다고 판단되는 경우(A문서에서 B문서로 이동할 때)
+                // 전체 문서를 한 번에 서버로 보내 FULL_SYNC 하도록 함
                 String fullText = t_editor.getText();
                 controller.onFullDocumentChanged(fullText);
-            }
-        });
-    }
 
-    private void registerCaretListener() {
-        t_editor.addCaretListener(e -> {
-            if (ignoreDocumentEvents) return;
-
-            int dot = e.getDot();
-            int mark = e.getMark();
-            int start = Math.min(dot, mark);
-
-            // 1) 기존처럼 커서 정보 전송
-            //controller.onCursorMoved(start, length);
-
-            // 2) 현재 커서가 위치한 줄 구하기
-            try {
-                int currentLine = getLineOfOffset(start);
-
-                // 이미 내가 잠근 줄이면 아무것도 안 함
-                if (currentLine == myLockedLine) return;
-
-                // 다른 줄로 이동했다면, 이전 줄 UNLOCK
-                if (myLockedLine != -1) {
-                    controller.requestUnlockLine(myLockedLine);
-                }
-
-                // 새 줄에 LOCK 요청
-                controller.requestLockLine(currentLine);
-                myLockedLine = currentLine;
-
-            } catch (BadLocationException ex) {
-                // 무시
-            }
-        });
-    }
-
-    //한글 IME 조합 상태 감지
-    private void registerImeListener() {
-        t_editor.addInputMethodListener(new InputMethodListener() {
-            @Override
-            public void inputMethodTextChanged(InputMethodEvent e) {
-                int committed = e.getCommittedCharacterCount();
-
-                if (committed == 0) {
-                    // 아직 조합 중 (예: 'ㄱ', '가'로 바뀌는 도중)
-                    imeComposing = true;
-                } else {
-                    // 조합이 끝나서 최종 글자가 확정된 상태
-                    imeComposing = false;
-
-                    // 이 시점에만 서버로 배치된 변경 전송
-                    flushPendingInsert();
-                    flushPendingDeletes();
-                }
-            }
-
-            @Override
-            public void caretPositionChanged(InputMethodEvent e) {
-                // 한글 조합 중 캐럿 이동 (지금은 따로 처리 안 함)
             }
         });
     }
 
 
-    // ===== DocumentFilter: 잠긴 줄(line lock)은 아예 입력/삭제를 막는다 =====
-    private void installDocumentFilter() {
-        AbstractDocument doc = (AbstractDocument) t_editor.getDocument();
-        doc.setDocumentFilter(new DocumentFilter() {
-
-            @Override
-            public void insertString(FilterBypass fb, int offset, String str, AttributeSet attrs)
-                    throws BadLocationException {
-
-                if (!ignoreDocumentEvents && isLockedOffset(offset)) {
-                    JOptionPane.showMessageDialog(
-                            EditorMainUI.this,
-                            "🔒 이 줄은 다른 사용자가 편집 중입니다.",
-                            "편집 불가",
-                            JOptionPane.INFORMATION_MESSAGE
-                    );
-                    return; // 문서 변경 자체를 막음
-                }
-
-                super.insertString(fb, offset, str, attrs);
-            }
-
-            @Override
-            public void remove(FilterBypass fb, int offset, int length)
-                    throws BadLocationException {
-
-                if (!ignoreDocumentEvents && isLockedOffset(offset)) {
-                    JOptionPane.showMessageDialog(
-                            EditorMainUI.this,
-                            "🔒 이 줄은 다른 사용자가 편집 중입니다.",
-                            "편집 불가",
-                            JOptionPane.INFORMATION_MESSAGE
-                    );
-                    return;
-                }
-
-                super.remove(fb, offset, length);
-            }
-
-            @Override
-            public void replace(FilterBypass fb, int offset, int length,
-                                String text, AttributeSet attrs)
-                    throws BadLocationException {
-
-                if (!ignoreDocumentEvents && isLockedOffset(offset)) {
-                    JOptionPane.showMessageDialog(
-                            EditorMainUI.this,
-                            "🔒 이 줄은 다른 사용자가 편집 중입니다.",
-                            "편집 불가",
-                            JOptionPane.INFORMATION_MESSAGE
-                    );
-                    return;
-                }
-
-                super.replace(fb, offset, length, text, attrs);
-            }
-        });
-    }
-
-    // offset이 잠긴 줄에 속하는지 확인
-    private boolean isLockedOffset(int offset) {
-        try {
-            int line = getLineOfOffset(offset);
-            return lockedLinesByOthers.contains(line);
-        } catch (BadLocationException e) {
-            return false;
-        }
-    }
-
-
-    // 다른 사용자가 편집한 결과를 우리 에디터에 반영할 때만 쓰는 메서드(밑에 3개)
     public void applyInsert(int offset, String text) {
         ignoreDocumentEvents = true;
-        try {
-            t_editor.getDocument().insertString(offset, text, null);
-        } catch (BadLocationException e) {
-            e.printStackTrace();
-        } finally {
-            ignoreDocumentEvents = false;
-        }
+        t_editor.insert(text, offset);
+        ignoreDocumentEvents = false;
     }
 
     public void applyDelete(int offset, int length) {
         ignoreDocumentEvents = true;
         try {
-            t_editor.getDocument().remove(offset, length);
-        } catch (BadLocationException e) {
-            e.printStackTrace();
+            t_editor.replaceRange("", offset, offset + length);
         } finally {
             ignoreDocumentEvents = false;
         }
@@ -446,407 +211,15 @@ public class EditorMainUI extends JFrame {
 
     public void setFullDocument(String text) {
         ignoreDocumentEvents = true;
-        try {
-            t_editor.setText(text != null ? text : "");
-        } finally {
-            ignoreDocumentEvents = false;
-        }
-    }
-
-    // 커서 하이라이트 보여주는 용도
-    public void showRemoteCursor(String userId, int offset, int length) {
-        try {
-            Highlighter highlighter = t_editor.getHighlighter();
-
-            // 이전 하이라이트 제거
-            Object oldTag = cursorHighlights.get(userId);
-            if (oldTag != null) {
-                highlighter.removeHighlight(oldTag);
-            }
-
-            int start = offset;
-            int end = offset + Math.max(1, length); // length가 0이면 한 글자만 강조
-
-            Object tag = highlighter.addHighlight(
-                    start, end,
-                    new DefaultHighlighter.DefaultHighlightPainter(
-                            new Color(12, 136, 231)  // 노란색 같은 공통 색
-                    )
-            );
-            cursorHighlights.put(userId, tag);
-        } catch (BadLocationException ignored) {
-        }
-    }
-
-    // ===== 이미지 삽입/표시 =====
-
-    /**
-     * 서버/다른 클라이언트에서 IMAGE_INSERT를 받았을 때 호출됨
-     */
-    public void applyImageInsert(int blockId, int offset, byte[] data, int width, int height) {
-        ignoreDocumentEvents = true;
-        try {
-            insertImageIntoDocument(blockId, offset, data, width, height);
-        } finally {
-            ignoreDocumentEvents = false;
-        }
-    }
-
-    /**
-     * 서버/다른 클라이언트에서 IMAGE_RESIZE를 받았을 때 호출됨
-     */
-    public void applyImageResize(int blockId, int newWidth, int newHeight) {
-        ignoreDocumentEvents = true;
-        try {
-            StyledDocument doc = t_editor.getStyledDocument();
-            int len = doc.getLength();
-            for (int i = 0; i < len; i++) {
-                Element elem = doc.getCharacterElement(i);
-                Object bid = elem.getAttributes().getAttribute("blockId");
-                if (bid instanceof Integer && ((Integer) bid) == blockId) {
-                    Icon icon = StyleConstants.getIcon(elem.getAttributes());
-                    if (icon instanceof ImageIcon imageIcon) {
-                        Image original = imageIcon.getImage();
-                        Image scaled = original.getScaledInstance(
-                                newWidth, newHeight, Image.SCALE_SMOOTH);
-                        ImageIcon newIcon = new ImageIcon(scaled);
-
-                        SimpleAttributeSet attrs = new SimpleAttributeSet();
-                        StyleConstants.setIcon(attrs, newIcon);
-                        attrs.addAttribute("blockId", blockId);
-
-                        doc.setCharacterAttributes(i, 1, attrs, true);
-                    }
-                    break;
-                }
-            }
-        } finally {
-            ignoreDocumentEvents = false;
-        }
-    }
-
-    /**
-     * 실제 문서에 이미지 아이콘을 삽입하는 공통 메서드.
-     * - offset 위치에 IMAGE_PLACEHOLDER 문자를 삽입 (필요 시)
-     * - 해당 위치의 문자에 icon + blockId 속성을 부여.
-     */
-    private void insertImageIntoDocument(int blockId, int offset, byte[] data, int width, int height) {
-        try {
-            StyledDocument doc = t_editor.getStyledDocument();
-            int docLen = doc.getLength();
-
-            // offset 보정
-            if (offset < 0) offset = 0;
-            if (offset > docLen) offset = docLen;
-
-            // 바이트 → BufferedImage
-            BufferedImage image = ImageIO.read(new ByteArrayInputStream(data));
-            if (image == null) return;
-
-            // 실제 표시 크기로 스케일
-            Image scaled = image.getScaledInstance(width, height, Image.SCALE_SMOOTH);
-            ImageIcon icon = new ImageIcon(scaled);
-
-            SimpleAttributeSet attrs = new SimpleAttributeSet();
-            StyleConstants.setIcon(attrs, icon);
-            attrs.addAttribute("blockId", blockId);
-
-            boolean placeholderExists = false;
-            if (offset < doc.getLength()) {
-                String ch = doc.getText(offset, 1);
-                if (!ch.isEmpty() && ch.charAt(0) == IMAGE_PLACEHOLDER) {
-                    placeholderExists = true;
-                }
-            }
-
-            if (placeholderExists) {
-                // 이미 서버 DocumentManager가 넣어둔 플레이스홀더가 있는 경우:
-                // 문자 자체는 그대로 두고 속성만 덮어쓴다.
-                doc.setCharacterAttributes(offset, 1, attrs, true);
-            } else {
-                // 플레이스홀더 없이 처음 삽입하는 경우:
-                doc.insertString(offset, String.valueOf(IMAGE_PLACEHOLDER), attrs);
-            }
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    // ===== 로컬에서 드롭/붙여넣기로 이미지 넣기 =====
-
-    private void setupImageTransferHandler() {
-        t_editor.setTransferHandler(new TransferHandler() {
-            @Override
-            public boolean canImport(TransferSupport support) {
-                if (support.isDataFlavorSupported(DataFlavor.imageFlavor)) {
-                    return true;
-                }
-                if (support.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-                    return true;
-                }
-                if (support.isDataFlavorSupported(DataFlavor.stringFlavor)) {
-                    // 텍스트 붙여넣기도 허용
-                    return true;
-                }
-                return false;
-            }
-
-            @Override
-            public boolean importData(TransferSupport support) {
-                try {
-                    if (!canImport(support)) return false;
-
-                    // 이미지 드롭/붙여넣기
-                    if (support.isDataFlavorSupported(DataFlavor.imageFlavor)) {
-                        Transferable t = support.getTransferable();
-                        Image img = (Image) t.getTransferData(DataFlavor.imageFlavor);
-                        if (img instanceof BufferedImage bi) {
-                            insertLocalImage(bi);
-                        } else {
-                            // BufferedImage로 변환
-                            BufferedImage bi2 = new BufferedImage(
-                                    img.getWidth(null),
-                                    img.getHeight(null),
-                                    BufferedImage.TYPE_INT_ARGB
-                            );
-                            Graphics2D g2 = bi2.createGraphics();
-                            g2.drawImage(img, 0, 0, null);
-                            g2.dispose();
-                            insertLocalImage(bi2);
-                        }
-                        return true;
-                    }
-
-                    // 파일 드롭 (이미지 파일인 경우)
-                    if (support.isDataFlavorSupported(DataFlavor.javaFileListFlavor)) {
-                        Transferable t = support.getTransferable();
-                        @SuppressWarnings("unchecked")
-                        List<java.io.File> files =
-                                (List<java.io.File>) t.getTransferData(DataFlavor.javaFileListFlavor);
-                        for (java.io.File f : files) {
-                            try {
-                                BufferedImage bi = ImageIO.read(f);
-                                if (bi != null) {
-                                    insertLocalImage(bi);
-                                }
-                            } catch (Exception ignored) { }
-                        }
-                        return true;
-                    }
-
-                    // 일반 텍스트 붙여넣기
-                    if (support.isDataFlavorSupported(DataFlavor.stringFlavor)) {
-                        String s = (String) support.getTransferable()
-                                .getTransferData(DataFlavor.stringFlavor);
-                        t_editor.replaceSelection(s);
-                        return true;
-                    }
-
-                    return false;
-                } catch (Exception e) {
-                    e.printStackTrace();
-                    return false;
-                }
-            }
-        });
-    }
-
-    // ===== 줄 잠금/해제 표시 (🔒 + 배경 하이라이트) =====
-    public void lockLine(int lineIndex, String ownerUserId) {
-        lockedLinesByOthers.add(lineIndex);
-
-        try {
-            int startOffset = getLineStartOffset(lineIndex);
-            int endOffset = getLineEndOffset(lineIndex);
-
-            Highlighter highlighter = t_editor.getHighlighter();
-
-            Object oldTag = lockHighlights.get(lineIndex);
-            if (oldTag != null) {
-                highlighter.removeHighlight(oldTag);
-            }
-
-            Object tag = highlighter.addHighlight(
-                    startOffset,
-                    endOffset,
-                    new DefaultHighlighter.DefaultHighlightPainter(
-                            new Color(255, 220, 220)
-                    )
-            );
-            lockHighlights.put(lineIndex, tag);
-
-            l_mode.setText("모드: TEXT  🔒 line " + (lineIndex + 1) + " (" + ownerUserId + ")");
-        } catch (BadLocationException ignored) {}
+        t_editor.setText(text);
+        ignoreDocumentEvents = false;
     }
 
 
-    public void unlockLine(int lineIndex) {
-        lockedLinesByOthers.remove(lineIndex);
-
-        Object tag = lockHighlights.remove(lineIndex);
-        if (tag != null) {
-            t_editor.getHighlighter().removeHighlight(tag);
-        }
-
-        // 잠금 해제되면 기본 모드 텍스트로 복구 (필요하면 더 똑똑하게 바뀌게 가능)
-        l_mode.setText("모드: TEXT");
-    }
-
-    //배치된 INSERT 메시지 한 번에 전송
-    private void flushPendingInsert() {
-        if (pendingInsertText.length() == 0) return;
-
-        try {
-            int offset = pendingInsertOffset;
-            String text = pendingInsertText.toString();
-            int line = getLineOfOffset(offset);
-
-            // LOCK 체크
-            if (myLockedLine != line) {
-                if (myLockedLine != -1) {
-                    controller.requestUnlockLine(myLockedLine);
-                }
-                controller.requestLockLine(line);
-                myLockedLine = line;
-            }
-
-            // 배치된 텍스트 한 번에 전송
-            controller.onTextInserted(offset, text);
-
-            // 초기화
-            pendingInsertText.setLength(0);
-            pendingInsertOffset = -1;
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    // 배치된 DELETE 메시지 한 번에 전송
-    private void flushPendingDeletes() {
-        if (pendingDeleteOps.isEmpty()) return;
-
-        try {
-            DeleteOperation firstOp = pendingDeleteOps.poll();
-            int totalOffset = firstOp.offset;
-            int totalLength = firstOp.length;
-
-            while (!pendingDeleteOps.isEmpty()) {
-                DeleteOperation op = pendingDeleteOps.poll();
-                if (op.offset <= totalOffset + totalLength) {
-                    totalLength += op.length;
-                }
-            }
-
-            int line = getLineOfOffset(totalOffset);
-
-            // LOCK 체크
-            if (myLockedLine != line) {
-                if (myLockedLine != -1) {
-                    controller.requestUnlockLine(myLockedLine);
-                }
-                controller.requestLockLine(line);
-                myLockedLine = line;
-            }
-
-            // 배치된 삭제 한 번에 전송
-            controller.onTextDeleted(totalOffset, totalLength);
-
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-
-    /**
-     * 로컬에서 이미지 하나를 삽입할 때 호출.
-     * - 에디터의 현재 caret 위치 기준
-     * - 적당한 크기로 스케일 후
-     * - 서버로 IMAGE_INSERT 전송 + 문서에 즉시 반영
-     */
-    private void insertLocalImage(BufferedImage image) {
-        if (controller == null || image == null) return;
-
-        int caret = t_editor.getCaretPosition();
-        Dimension size = computeInitialImageSize(image);
-        byte[] bytes = encodeImageToPng(image);
-
-        if (bytes == null) return;
-
-        // 서버 쪽에 IMAGE_INSERT 전송 (blockId 생성은 컨트롤러에서)
-        int blockId = controller.onImageInserted(caret, bytes, size.width, size.height);
-
-        // 로컬 문서에도 즉시 반영
-        ignoreDocumentEvents = true;
-        try {
-            insertImageIntoDocument(blockId, caret, bytes, size.width, size.height);
-        } finally {
-            ignoreDocumentEvents = false;
-        }
-    }
-
-    private Dimension computeInitialImageSize(BufferedImage image) {
-        int originalW = image.getWidth();
-        int originalH = image.getHeight();
-
-        // 에디터 뷰포트 기준으로 최대 폭 계산
-        int maxWidth = 600;
-        if (editorScrollPane != null && editorScrollPane.getViewport().getWidth() > 0) {
-            maxWidth = (int) (editorScrollPane.getViewport().getWidth() * 0.7);
-        }
-
-        double scale = 1.0;
-        if (originalW > maxWidth) {
-            scale = (double) maxWidth / (double) originalW;
-        }
-
-        int w = (int) Math.max(50, originalW * scale);
-        int h = (int) Math.max(50, originalH * scale);
-        return new Dimension(w, h);
-    }
-
-    private byte[] encodeImageToPng(BufferedImage image) {
-        try {
-            ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            ImageIO.write(image, "png", bos);
-            return bos.toByteArray();
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    // setter 메서드 (컨트롤러 주입)
+    //setter 메서드 (컨트롤러 주입)
     public void setController(EditorController controller) {
         this.controller = controller;
-        registerDocumentListener(); // 문서 입력,삭제 관련 리스너
-        registerCaretListener(); // 커서 관련 리스너
-        registerImeListener(); // IME 조합 상태 리스너
+        registerDocumentListener();
     }
-
-    // ===== JTextPane용 라인 계산 유틸 =====
-    private int getLineOfOffset(int offset) throws BadLocationException {
-        Element root = t_editor.getDocument().getDefaultRootElement();
-        return root.getElementIndex(offset);
-    }
-
-    private int getLineStartOffset(int line) throws BadLocationException {
-        Element root = t_editor.getDocument().getDefaultRootElement();
-        Element lineElem = root.getElement(line);
-        if (lineElem == null) {
-            throw new BadLocationException("No such line", t_editor.getDocument().getLength());
-        }
-        return lineElem.getStartOffset();
-    }
-
-    private int getLineEndOffset(int line) throws BadLocationException {
-        Element root = t_editor.getDocument().getDefaultRootElement();
-        Element lineElem = root.getElement(line);
-        if (lineElem == null) {
-            throw new BadLocationException("No such line", t_editor.getDocument().getLength());
-        }
-        return lineElem.getEndOffset();
-    }
-
 
 }

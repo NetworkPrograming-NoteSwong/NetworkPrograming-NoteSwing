@@ -61,7 +61,7 @@ public class Client {
 
         try {
             out.writeObject(msg);
-            out.flush();
+            out.flush(); //즉시 전송
         } catch (Exception e) {
             System.err.println("전송 오류: " + e.getMessage());
         }
@@ -74,4 +74,5 @@ public class Client {
             if (socket != null) socket.close();
         } catch (Exception ignored) {}
     }
+
 }

@@ -1,6 +1,5 @@
 package server.ui;
 
-
 import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -22,7 +21,7 @@ public class ServerDashboardUI {
         frame.setSize(500, 400);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
 
-       buildGUI();
+        buildGUI();
 
         frame.setVisible(true);
     }
@@ -106,5 +105,5 @@ public class ServerDashboardUI {
     public void setOnStopServer(Runnable r) {
         this.onStopServer = r;
     }
-}
 
+}

@@ -22,4 +22,5 @@ public class ClientMain {
         // 서버 연결 시작
         controller.start();
     }
+
 }
