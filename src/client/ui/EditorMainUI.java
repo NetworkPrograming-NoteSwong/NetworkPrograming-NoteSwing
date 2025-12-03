@@ -4,13 +4,14 @@ package client.ui;
 import client.controller.EditorController;
 
 import javax.swing.*;
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
 import java.awt.*;
 
+/**
+ * UI 렌더링 및 레이아웃 담당
+ * 문서 관리는 DocumentManager에 위임
+ */
 public class EditorMainUI extends JFrame {
 
-    //컨트롤러
     private EditorController controller;
 
     // 상단 바 컴포넌트
@@ -24,12 +25,12 @@ public class EditorMainUI extends JFrame {
     // 중앙 코드 에디터
     private JTextArea t_editor;
 
+    // ⭐ 문서 관리 담당 (새로 분리)
+    private TextManager textManager;
+
     // 하단 상태바
     private JLabel l_connectionStatus;
     private JLabel l_mode;
-
-    // Document 이벤트 플래그 변수
-    private boolean ignoreDocumentEvents = false;
 
     public EditorMainUI() {
         super("NoteSwing Client");
@@ -37,12 +38,11 @@ public class EditorMainUI extends JFrame {
         buildGUI();
 
         setSize(1000, 700);
-        setLocationRelativeTo(null);               // 화면 중앙
+        setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setVisible(true);
     }
 
-    // 전체 레이아웃 구성
     private void buildGUI() {
         setLayout(new BorderLayout());
 
@@ -51,13 +51,11 @@ public class EditorMainUI extends JFrame {
         add(createStatusBarPanel(), BorderLayout.SOUTH);
     }
 
-    // 상단 TopBar: 앱 이름, 문서 제목, 로그인 상태/버튼
     private JPanel createTopBarPanel() {
         JPanel p = new JPanel(new BorderLayout());
         p.setBorder(BorderFactory.createEmptyBorder(8, 12, 8, 12));
         p.setBackground(new Color(245, 245, 245));
 
-        // 왼쪽: 앱 이름 + 현재 문서 제목
         JPanel p_left = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         JLabel l_appName = new JLabel("NoteSwing");
         l_appName.setFont(l_appName.getFont().deriveFont(Font.BOLD, 18f));
@@ -66,24 +64,11 @@ public class EditorMainUI extends JFrame {
         p_left.add(l_appName);
         p_left.add(l_docTitle);
 
-        // 오른쪽: 로그인 상태 + 버튼들
         JPanel p_right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         l_loginStatus = new JLabel("로그인되지 않음");
         b_login = new JButton("로그인");
         b_logout = new JButton("로그아웃");
-        b_logout.setEnabled(false);        // 초기에는 비활성화
-
-        // TODO: 나중에 컨트롤러 연결해서 이벤트 처리
-        // b_login.addActionListener(new ActionListener() {
-        //     public void actionPerformed(ActionEvent e) {
-        //         controller.onClickLogin();
-        //     }
-        // });
-        // b_logout.addActionListener(new ActionListener() {
-        //     public void actionPerformed(ActionEvent e) {
-        //         controller.onClickLogout();
-        //     }
-        // });
+        b_logout.setEnabled(false);
 
         p_right.add(l_loginStatus);
         p_right.add(b_login);
@@ -95,9 +80,7 @@ public class EditorMainUI extends JFrame {
         return p;
     }
 
-    // 중앙: 왼쪽 문서 리스트 + 오른쪽 코드 에디터
     private JComponent createCenterPanel() {
-        // 왼쪽 사이드바(문서 리스트)
         JPanel p_sidebar = new JPanel(new BorderLayout());
         p_sidebar.setBorder(BorderFactory.createMatteBorder(
                 0, 0, 0, 1, new Color(220, 220, 220)));
@@ -106,16 +89,13 @@ public class EditorMainUI extends JFrame {
         l_sideTitle.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         p_sidebar.add(l_sideTitle, BorderLayout.NORTH);
 
-        DefaultListModel<String> model = new DefaultListModel<String>();
+        DefaultListModel<String> model = new DefaultListModel<>();
         model.addElement("Untitled Document");
         model.addElement("Project Plan");
         model.addElement("README.md");
 
-        list_docs = new JList<String>(model);
+        list_docs = new JList<>(model);
         p_sidebar.add(new JScrollPane(list_docs), BorderLayout.CENTER);
-
-        // TODO: 문서 선택 이벤트도 나중에 컨트롤러에 연결
-        // list_docs.addListSelectionListener(new ListSelectionListener() { ... });
 
         JPanel p_editor = new JPanel(new BorderLayout());
         t_editor = new JTextArea();
@@ -123,7 +103,9 @@ public class EditorMainUI extends JFrame {
 
         p_editor.add(new JScrollPane(t_editor), BorderLayout.CENTER);
 
-        // 좌우 분할
+        // ⭐ DocumentManager 초기화
+        textManager = new TextManager(t_editor);
+
         JSplitPane split = new JSplitPane(
                 JSplitPane.HORIZONTAL_SPLIT,
                 p_sidebar,
@@ -135,7 +117,6 @@ public class EditorMainUI extends JFrame {
         return split;
     }
 
-    // 하단 StatusBar: 서버 연결 상태, 모드 표시
     private JPanel createStatusBarPanel() {
         JPanel p = new JPanel(new BorderLayout());
         p.setBorder(BorderFactory.createEmptyBorder(4, 8, 4, 8));
@@ -150,7 +131,6 @@ public class EditorMainUI extends JFrame {
         return p;
     }
 
-    // ===== 나중에 컨트롤러/모델에서 호출할 메서드들 =====
     public void updateLoginStatus(String text) {
         l_loginStatus.setText(text);
     }
@@ -159,67 +139,42 @@ public class EditorMainUI extends JFrame {
         l_connectionStatus.setText(text);
     }
 
-    // 내가 직접 타이핑/삭제한 변경을 감지해서 컨트롤러에 알려주는 역할(컨트롤러가 객체로 만들어 서버로 전송)
-    private void registerDocumentListener() {
-        t_editor.getDocument().addDocumentListener(new DocumentListener() {
-
-            @Override
-            public void insertUpdate(DocumentEvent e) {
-                if (ignoreDocumentEvents) return;
-
-                try {
-                    int offset = e.getOffset();
-                    int length = e.getLength();
-                    String inserted = t_editor.getText().substring(offset, offset + length);
-                    controller.onTextInserted(offset, inserted);
-                } catch (Exception ignored) {}
-            }
-
-            @Override
-            public void removeUpdate(DocumentEvent e) {
-                if (ignoreDocumentEvents) return;
-                controller.onTextDeleted(e.getOffset(), e.getLength());
-            }
-
-            @Override
-            public void changedUpdate(DocumentEvent e) {
-                if (ignoreDocumentEvents) return;
-                // 스타일/속성 변화 등으로 문서가 바뀌었다고 판단되는 경우(A문서에서 B문서로 이동할 때)
-                // 전체 문서를 한 번에 서버로 보내 FULL_SYNC 하도록 함
-                String fullText = t_editor.getText();
-                controller.onFullDocumentChanged(fullText);
-
-            }
-        });
-    }
-
-
+    // ⭐ 서버 메시지 처리 (DocumentManager에 위임)
     public void applyInsert(int offset, String text) {
-        ignoreDocumentEvents = true;
-        t_editor.insert(text, offset);
-        ignoreDocumentEvents = false;
+        textManager.applyInsert(offset, text);
     }
 
     public void applyDelete(int offset, int length) {
-        ignoreDocumentEvents = true;
-        try {
-            t_editor.replaceRange("", offset, offset + length);
-        } finally {
-            ignoreDocumentEvents = false;
-        }
+        textManager.applyDelete(offset, length);
     }
 
     public void setFullDocument(String text) {
-        ignoreDocumentEvents = true;
-        t_editor.setText(text);
-        ignoreDocumentEvents = false;
+        textManager.setFullDocument(text);
     }
 
-
-    //setter 메서드 (컨트롤러 주입)
+    // ⭐ 콜백 설정 (Controller가 호출)
     public void setController(EditorController controller) {
         this.controller = controller;
-        registerDocumentListener();
-    }
 
+        // DocumentManager에 콜백 설정
+        textManager.setChangeListener(new TextManager.DocumentChangeListener() {
+            @Override
+            public void onTextInserted(int offset, String text) {
+                controller.onTextInserted(offset, text);
+            }
+
+            @Override
+            public void onTextDeleted(int offset, int length) {
+                controller.onTextDeleted(offset, length);
+            }
+
+            @Override
+            public void onFullDocumentChanged(String text) {
+                controller.onFullDocumentChanged(text);
+            }
+        });
+
+        // 리스너 등록 시작
+        textManager.registerListener();
+    }
 }
