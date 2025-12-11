@@ -2,6 +2,7 @@ package client.core;
 
 import client.controller.EditorController;
 import global.object.EditMessage;
+
 import java.io.ObjectInputStream;
 
 public class ClientReceiver extends Thread {
@@ -24,11 +25,13 @@ public class ClientReceiver extends Thread {
                     case INSERT -> controller.onRemoteInsert(msg.offset, msg.text);
                     case DELETE -> controller.onRemoteDelete(msg.offset, msg.length);
                     case FULL_SYNC -> controller.onRemoteFullSync(msg.text);
+                    case IMAGE_INSERT -> controller.onRemoteImageInsert(msg.offset, msg.blockId, msg.payload);
+                    default -> {
+                    }
                 }
             }
         } catch (Exception e) {
             controller.onConnectionLost();
         }
     }
-
 }

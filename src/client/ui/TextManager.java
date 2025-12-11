@@ -1,42 +1,34 @@
-// src/client/ui/DocumentManager.java
 package client.ui;
 
-import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.Document;
+import javax.swing.text.JTextComponent;
 
 /**
- * 문서(JTextArea) 관리 및 변경 감지
- * UI 업데이트와 문서 변경을 분리
+ * 문서(JTextComponent) 관리 및 변경 감지
  */
 public class TextManager {
-    private final JTextArea editor;
+
+    private final JTextComponent editor;
     private DocumentChangeListener changeListener;
     private boolean ignoreEvents = false;
 
-    // ⭐ 콜백 인터페이스: 문서 변경 시 외부에 알림
     public interface DocumentChangeListener {
         void onTextInserted(int offset, String text);
         void onTextDeleted(int offset, int length);
         void onFullDocumentChanged(String text);
     }
 
-    public TextManager(JTextArea editor) {
+    public TextManager(JTextComponent editor) {
         this.editor = editor;
     }
 
-    /**
-     * 문서 변경 리스너 콜백 설정
-     * (보통 Controller가 넣음)
-     */
     public void setChangeListener(DocumentChangeListener listener) {
         this.changeListener = listener;
     }
 
-    /**
-     * DocumentListener 등록
-     * 이후 사용자 입력 시 콜백으로 알림
-     */
     public void registerListener() {
         editor.getDocument().addDocumentListener(new DocumentListener() {
 
@@ -47,7 +39,9 @@ public class TextManager {
                 try {
                     int offset = e.getOffset();
                     int length = e.getLength();
-                    String inserted = editor.getText().substring(offset, offset + length);
+
+                    // ✅ 여기! editor.getText() 대신 Document에서 직접 읽기
+                    String inserted = editor.getDocument().getText(offset, length);
 
                     if (changeListener != null) {
                         changeListener.onTextInserted(offset, inserted);
@@ -66,49 +60,50 @@ public class TextManager {
 
             @Override
             public void changedUpdate(DocumentEvent e) {
-                if (ignoreEvents) return;
-
-                if (changeListener != null) {
-                    changeListener.onFullDocumentChanged(editor.getText());
-                }
+                // 스타일 변경 이벤트 → 여기서는 무시
             }
         });
     }
 
-    /**
-     * 서버에서 온 INSERT 메시지를 에디터에 적용
-     */
+
+    // ★ 여기 두 메서드가 문제였던 부분입니다.
     public void applyInsert(int offset, String text) {
         ignoreEvents = true;
         try {
-            editor.insert(text, offset);
-        } finally {
-            ignoreEvents = false;
-        }
-    }
-
-    /**
-     * 서버에서 온 DELETE 메시지를 에디터에 적용
-     */
-    public void applyDelete(int offset, int length) {
-        ignoreEvents = true;
-        try {
-            if (offset < 0) return;
-            if (offset > editor.getDocument().getLength()) return;
-
-            // ⭐ 범위 검증 (한글 IME 처리 때 offset이 꼬일 수 있음)
-            int actualLength = Math.min(length, editor.getDocument().getLength() - offset);
-            if (actualLength > 0) {
-                editor.replaceRange("", offset, offset + actualLength);
+            Document doc = editor.getDocument();
+            int safeOffset = Math.max(0, Math.min(offset, doc.getLength()));
+            try {
+                doc.insertString(safeOffset, text, null);
+            } catch (BadLocationException e) {
+                // offset이 범위를 살짝 벗어난 경우 방어
             }
         } finally {
             ignoreEvents = false;
         }
     }
 
-    /**
-     * 서버에서 온 FULL_SYNC 메시지를 에디터에 적용
-     */
+    public void applyDelete(int offset, int length) {
+        ignoreEvents = true;
+        try {
+            Document doc = editor.getDocument();
+            int docLen = doc.getLength();
+
+            if (offset < 0) return;
+            if (offset > docLen) return;
+
+            int actualLength = Math.min(length, docLen - offset);
+            if (actualLength > 0) {
+                try {
+                    doc.remove(offset, actualLength);
+                } catch (BadLocationException e) {
+                    // 방어 코드
+                }
+            }
+        } finally {
+            ignoreEvents = false;
+        }
+    }
+
     public void setFullDocument(String text) {
         ignoreEvents = true;
         try {

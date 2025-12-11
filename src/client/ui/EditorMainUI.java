@@ -1,4 +1,3 @@
-// src/client/ui/EditorMainUI.java
 package client.ui;
 
 import client.controller.EditorController;
@@ -8,13 +7,12 @@ import java.awt.*;
 
 /**
  * UI 렌더링 및 레이아웃 담당
- * 문서 관리는 DocumentManager에 위임
  */
 public class EditorMainUI extends JFrame {
 
     private EditorController controller;
 
-    // 상단 바 컴포넌트
+    // 상단 바
     private JLabel l_loginStatus;
     private JButton b_login;
     private JButton b_logout;
@@ -22,11 +20,10 @@ public class EditorMainUI extends JFrame {
     // 왼쪽 문서 리스트
     private JList<String> list_docs;
 
-    // 중앙 코드 에디터
-    private JTextArea t_editor;
-
-    // ⭐ 문서 관리 담당 (새로 분리)
+    // 중앙 에디터
+    private JTextPane t_editor;
     private TextManager textManager;
+    private ImageManager imageManager;
 
     // 하단 상태바
     private JLabel l_connectionStatus;
@@ -98,13 +95,14 @@ public class EditorMainUI extends JFrame {
         p_sidebar.add(new JScrollPane(list_docs), BorderLayout.CENTER);
 
         JPanel p_editor = new JPanel(new BorderLayout());
-        t_editor = new JTextArea();
+        t_editor = new JTextPane();
         t_editor.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
 
         p_editor.add(new JScrollPane(t_editor), BorderLayout.CENTER);
 
-        // ⭐ DocumentManager 초기화
+        // 텍스트/이미지 매니저 초기화
         textManager = new TextManager(t_editor);
+        imageManager = new ImageManager(t_editor, textManager);
 
         JSplitPane split = new JSplitPane(
                 JSplitPane.HORIZONTAL_SPLIT,
@@ -123,7 +121,7 @@ public class EditorMainUI extends JFrame {
         p.setBackground(new Color(250, 250, 250));
 
         l_connectionStatus = new JLabel("서버 연결: 끊김");
-        l_mode = new JLabel("모드: TEXT");
+        l_mode = new JLabel("모드: TEXT+IMAGE");
 
         p.add(l_connectionStatus, BorderLayout.WEST);
         p.add(l_mode, BorderLayout.EAST);
@@ -139,7 +137,7 @@ public class EditorMainUI extends JFrame {
         l_connectionStatus.setText(text);
     }
 
-    // ⭐ 서버 메시지 처리 (DocumentManager에 위임)
+    // 서버 텍스트 메시지 처리
     public void applyInsert(int offset, String text) {
         textManager.applyInsert(offset, text);
     }
@@ -152,11 +150,17 @@ public class EditorMainUI extends JFrame {
         textManager.setFullDocument(text);
     }
 
-    // ⭐ 콜백 설정 (Controller가 호출)
+    // 서버 이미지 메시지 처리
+    public void applyImageInsert(int offset, int blockId, byte[] payload) {
+        imageManager.insertImageRemote(offset, payload);
+    }
+
+    // Controller 주입
     public void setController(EditorController controller) {
         this.controller = controller;
 
-        // DocumentManager에 콜백 설정
+        imageManager.setController(controller);
+
         textManager.setChangeListener(new TextManager.DocumentChangeListener() {
             @Override
             public void onTextInserted(int offset, String text) {
@@ -170,11 +174,10 @@ public class EditorMainUI extends JFrame {
 
             @Override
             public void onFullDocumentChanged(String text) {
-                controller.onFullDocumentChanged(text);
+                // 현재는 사용하지 않음
             }
         });
 
-        // 리스너 등록 시작
         textManager.registerListener();
     }
 }

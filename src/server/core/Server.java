@@ -37,26 +37,33 @@ public class Server {
                 ClientHandler handler = new ClientHandler(socket, this, ui);
                 handlers.add(handler);
 
+                // 새 클라이언트에게 현재 문서 전체 + 이미지 동기화
                 String current = doc.getDocument();
                 if (!current.isEmpty()) {
                     EditMessage full = new EditMessage(Mode.FULL_SYNC, "server", current);
                     ui.printDisplay("[FULL_SYNC 전송] 새 클라이언트에게 전체 문서 전송: " + full);
                     handler.send(full);
+
+                    // 이미지 동기화
+                    for (EditMessage imgMsg : doc.buildFullImageSyncMessages("server")) {
+                        ui.printDisplay("[IMAGE_SYNC 전송] " + imgMsg);
+                        handler.send(imgMsg);
+                    }
                 }
 
                 handler.start();
             }
 
         } catch (Exception e) {
-            if(running) ui.printDisplay("[서버 오류] " + e.getMessage());
+            if (running) ui.printDisplay("[서버 오류] " + e.getMessage());
         }
     }
 
     public void disconnect() {
         try {
             running = false;
-            for (ClientHandler handeler : handlers) {
-                handeler.getClientSocket().close();
+            for (ClientHandler handler : handlers) {
+                handler.getClientSocket().close();
             }
             serverSocket.close();
         } catch (IOException e) {
@@ -77,5 +84,4 @@ public class Server {
     public synchronized void removeHandler(ClientHandler handler) {
         handlers.remove(handler);
     }
-
 }
