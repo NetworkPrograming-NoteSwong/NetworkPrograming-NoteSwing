@@ -22,12 +22,23 @@ public class ClientReceiver extends Thread {
                 EditMessage msg = (EditMessage) in.readObject();
 
                 switch (msg.mode) {
-                    case INSERT -> controller.onRemoteInsert(msg.offset, msg.text);
-                    case DELETE -> controller.onRemoteDelete(msg.offset, msg.length);
-                    case FULL_SYNC -> controller.onRemoteFullSync(msg.text);
-                    case IMAGE_INSERT -> controller.onRemoteImageInsert(msg.offset, msg.blockId, msg.payload);
-                    default -> {
-                    }
+                    case INSERT ->
+                            controller.onRemoteInsert(msg.offset, msg.text);
+                    case DELETE ->
+                            controller.onRemoteDelete(msg.offset, msg.length);
+                    case FULL_SYNC ->
+                            controller.onRemoteFullSync(msg.text);
+                    case IMAGE_INSERT ->
+                            controller.onRemoteImageInsert(
+                                    msg.blockId, msg.offset,
+                                    msg.width, msg.height, msg.payload);
+                    case IMAGE_RESIZE ->
+                            controller.onRemoteImageResize(
+                                    msg.blockId, msg.width, msg.height);
+                    case IMAGE_MOVE ->
+                            controller.onRemoteImageMove(
+                                    msg.blockId, msg.newOffset);
+                    default -> { /* JOIN/LEAVE 등은 무시 */ }
                 }
             }
         } catch (Exception e) {

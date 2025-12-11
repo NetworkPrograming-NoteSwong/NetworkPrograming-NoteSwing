@@ -2,8 +2,10 @@ package server.core;
 
 import global.enums.Mode;
 import global.object.EditMessage;
+import global.object.DocumentState;
 import server.ui.ServerDashboardUI;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -12,12 +14,14 @@ import java.util.List;
 
 public class Server {
 
-    private int port;
+    private final int port;
+    private final ServerDashboardUI ui;
+    private final DocumentManager doc = new DocumentManager();
+    private final DocumentFileStore fileStore = new DocumentFileStore();
+
     private volatile boolean running = false;
     private ServerSocket serverSocket;
-    private ServerDashboardUI ui;
-    private DocumentManager doc = new DocumentManager();
-    private List<ClientHandler> handlers = new ArrayList<>();
+    private final List<ClientHandler> handlers = new ArrayList<>();
 
     public Server(int port, ServerDashboardUI ui) {
         this.port = port;
@@ -41,40 +45,42 @@ public class Server {
                 String current = doc.getDocument();
                 if (!current.isEmpty()) {
                     EditMessage full = new EditMessage(Mode.FULL_SYNC, "server", current);
-                    ui.printDisplay("[FULL_SYNC 전송] 새 클라이언트에게 전체 문서 전송: " + full);
+                    full.offset = 0;
+                    full.length = current.length();
                     handler.send(full);
 
-                    // 이미지 동기화
                     for (EditMessage imgMsg : doc.buildFullImageSyncMessages("server")) {
-                        ui.printDisplay("[IMAGE_SYNC 전송] " + imgMsg);
                         handler.send(imgMsg);
                     }
                 }
 
                 handler.start();
             }
-
         } catch (Exception e) {
-            if (running) ui.printDisplay("[서버 오류] " + e.getMessage());
+            if (running) {
+                ui.printDisplay("[서버 오류] " + e.getMessage());
+            }
         }
     }
 
     public void disconnect() {
+        running = false;
         try {
-            running = false;
             for (ClientHandler handler : handlers) {
-                handler.getClientSocket().close();
+                try {
+                    handler.getClientSocket().close();
+                } catch (IOException ignored) {}
             }
-            serverSocket.close();
+            handlers.clear();
+            if (serverSocket != null) serverSocket.close();
         } catch (IOException e) {
-            ui.printDisplay("서버 소켓 종료");
+            ui.printDisplay("서버 소켓 종료 오류: " + e.getMessage());
         }
     }
 
     public synchronized void broadcast(EditMessage msg, ClientHandler sender) {
         ui.printDisplay("[메시지 수신] " + msg);
         doc.apply(msg);
-
         for (ClientHandler handler : handlers) {
             if (handler == sender) continue;
             handler.send(msg);
@@ -83,5 +89,28 @@ public class Server {
 
     public synchronized void removeHandler(ClientHandler handler) {
         handlers.remove(handler);
+    }
+
+    // ==== 파일 입출력 ====
+
+    // 예) ui에서 server.saveDocumentToFile("autosave.bin") 이런 식으로 호출
+    public void saveDocumentToFile(String path) {
+        try {
+            DocumentState state = doc.createState();
+            fileStore.save(state, new File(path));
+            ui.printDisplay("[저장 완료] " + path);
+        } catch (IOException e) {
+            ui.printDisplay("[저장 실패] " + e.getMessage());
+        }
+    }
+
+    public void loadDocumentFromFile(String path) {
+        try {
+            DocumentState state = fileStore.load(new File(path));
+            doc.loadState(state);
+            ui.printDisplay("[불러오기 완료] " + path);
+        } catch (Exception e) {
+            ui.printDisplay("[불러오기 실패] " + e.getMessage());
+        }
     }
 }

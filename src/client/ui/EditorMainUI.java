@@ -31,9 +31,7 @@ public class EditorMainUI extends JFrame {
 
     public EditorMainUI() {
         super("NoteSwing Client");
-
         buildGUI();
-
         setSize(1000, 700);
         setLocationRelativeTo(null);
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -42,7 +40,6 @@ public class EditorMainUI extends JFrame {
 
     private void buildGUI() {
         setLayout(new BorderLayout());
-
         add(createTopBarPanel(), BorderLayout.NORTH);
         add(createCenterPanel(), BorderLayout.CENTER);
         add(createStatusBarPanel(), BorderLayout.SOUTH);
@@ -57,7 +54,6 @@ public class EditorMainUI extends JFrame {
         JLabel l_appName = new JLabel("NoteSwing");
         l_appName.setFont(l_appName.getFont().deriveFont(Font.BOLD, 18f));
         JLabel l_docTitle = new JLabel(" / Untitled Document");
-
         p_left.add(l_appName);
         p_left.add(l_docTitle);
 
@@ -66,21 +62,20 @@ public class EditorMainUI extends JFrame {
         b_login = new JButton("로그인");
         b_logout = new JButton("로그아웃");
         b_logout.setEnabled(false);
-
         p_right.add(l_loginStatus);
         p_right.add(b_login);
         p_right.add(b_logout);
 
         p.add(p_left, BorderLayout.WEST);
         p.add(p_right, BorderLayout.EAST);
-
         return p;
     }
 
     private JComponent createCenterPanel() {
         JPanel p_sidebar = new JPanel(new BorderLayout());
-        p_sidebar.setBorder(BorderFactory.createMatteBorder(
-                0, 0, 0, 1, new Color(220, 220, 220)));
+        p_sidebar.setBorder(
+                BorderFactory.createMatteBorder(0, 0, 0, 1,
+                        new Color(220, 220, 220)));
 
         JLabel l_sideTitle = new JLabel("문서");
         l_sideTitle.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
@@ -90,28 +85,23 @@ public class EditorMainUI extends JFrame {
         model.addElement("Untitled Document");
         model.addElement("Project Plan");
         model.addElement("README.md");
-
         list_docs = new JList<>(model);
         p_sidebar.add(new JScrollPane(list_docs), BorderLayout.CENTER);
 
         JPanel p_editor = new JPanel(new BorderLayout());
         t_editor = new JTextPane();
         t_editor.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
-
         p_editor.add(new JScrollPane(t_editor), BorderLayout.CENTER);
 
-        // 텍스트/이미지 매니저 초기화
         textManager = new TextManager(t_editor);
         imageManager = new ImageManager(t_editor, textManager);
 
         JSplitPane split = new JSplitPane(
                 JSplitPane.HORIZONTAL_SPLIT,
                 p_sidebar,
-                p_editor
-        );
+                p_editor);
         split.setDividerLocation(220);
         split.setOneTouchExpandable(true);
-
         return split;
     }
 
@@ -122,12 +112,12 @@ public class EditorMainUI extends JFrame {
 
         l_connectionStatus = new JLabel("서버 연결: 끊김");
         l_mode = new JLabel("모드: TEXT+IMAGE");
-
         p.add(l_connectionStatus, BorderLayout.WEST);
         p.add(l_mode, BorderLayout.EAST);
-
         return p;
     }
+
+    // ===== 상태 표시 =====
 
     public void updateLoginStatus(String text) {
         l_loginStatus.setText(text);
@@ -137,7 +127,8 @@ public class EditorMainUI extends JFrame {
         l_connectionStatus.setText(text);
     }
 
-    // 서버 텍스트 메시지 처리
+    // ===== 서버에서 온 텍스트 적용 =====
+
     public void applyInsert(int offset, String text) {
         textManager.applyInsert(offset, text);
     }
@@ -150,16 +141,25 @@ public class EditorMainUI extends JFrame {
         textManager.setFullDocument(text);
     }
 
-    // 서버 이미지 메시지 처리
-    public void applyImageInsert(int offset, int blockId, byte[] payload) {
-        imageManager.insertImageRemote(offset, payload);
+    // ===== 서버에서 온 이미지 적용 =====
+
+    public void applyImageInsert(int blockId, int offset,
+                                 int width, int height, byte[] data) {
+        imageManager.insertImageRemote(blockId, offset, width, height, data);
     }
 
-    // Controller 주입
+    public void applyImageResize(int blockId, int width, int height) {
+        imageManager.applyRemoteResize(blockId, width, height);
+    }
+
+    public void applyImageMove(int blockId, int newOffset) {
+        imageManager.applyRemoteMove(blockId, newOffset);
+    }
+
+    // ===== Controller 주입 =====
+
     public void setController(EditorController controller) {
         this.controller = controller;
-
-        imageManager.setController(controller);
 
         textManager.setChangeListener(new TextManager.DocumentChangeListener() {
             @Override
@@ -174,10 +174,27 @@ public class EditorMainUI extends JFrame {
 
             @Override
             public void onFullDocumentChanged(String text) {
-                // 현재는 사용하지 않음
+                controller.onFullDocumentChanged(text);
             }
         });
-
         textManager.registerListener();
+
+        imageManager.setEventListener(new ImageEventListener() {
+            @Override
+            public void onLocalImageInserted(int blockId, int offset,
+                                             int width, int height, byte[] data) {
+                controller.onLocalImageInserted(blockId, offset, width, height, data);
+            }
+
+            @Override
+            public void onLocalImageResized(int blockId, int width, int height) {
+                controller.onLocalImageResized(blockId, width, height);
+            }
+
+            @Override
+            public void onLocalImageMoved(int blockId, int newOffset) {
+                controller.onLocalImageMoved(blockId, newOffset);
+            }
+        });
     }
 }

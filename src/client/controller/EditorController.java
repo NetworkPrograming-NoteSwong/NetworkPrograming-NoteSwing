@@ -2,8 +2,8 @@ package client.controller;
 
 import client.core.Client;
 import client.ui.EditorMainUI;
-import global.object.EditMessage;
 import global.enums.Mode;
+import global.object.EditMessage;
 
 /**
  * UI와 네트워크 계층의 조율자
@@ -24,7 +24,8 @@ public class EditorController {
         client.connectToServer();
     }
 
-    // ===== UI -> 서버 : 텍스트 =====
+    // ===== 텍스트: UI -> 서버 =====
+
     public void onTextInserted(int offset, String text) {
         EditMessage msg = new EditMessage(Mode.INSERT, userId, text);
         msg.offset = offset;
@@ -39,7 +40,7 @@ public class EditorController {
         client.send(msg);
     }
 
-    // (현재는 클라이언트에서 FULL_SYNC 전송 사용 안 함)
+    // 현재는 클라이언트가 FULL_SYNC를 보낼 일은 거의 없음 (서버 -> 클라 전용으로 사용 중)
     public void onFullDocumentChanged(String fullText) {
         EditMessage msg = new EditMessage(Mode.FULL_SYNC, userId, fullText);
         msg.offset = 0;
@@ -47,19 +48,37 @@ public class EditorController {
         client.send(msg);
     }
 
-    // ===== UI -> 서버 : 이미지 =====
-    public void onImageInserted(int offset, byte[] imageBytes) {
+    // ===== 이미지: UI -> 서버 =====
+
+    public void onLocalImageInserted(int blockId, int offset,
+                                     int width, int height, byte[] data) {
         EditMessage msg = new EditMessage(Mode.IMAGE_INSERT, userId, null);
+        msg.blockId = blockId;
         msg.offset = offset;
         msg.length = 1;
-        msg.payload = imageBytes;
-        // 간단히 타임스탬프로 blockId 생성
-        msg.blockId = (int) (System.currentTimeMillis() & 0x7fffffff);
+        msg.width = width;
+        msg.height = height;
+        msg.payload = data;
+        client.send(msg);
+    }
 
+    public void onLocalImageResized(int blockId, int width, int height) {
+        EditMessage msg = new EditMessage(Mode.IMAGE_RESIZE, userId, null);
+        msg.blockId = blockId;
+        msg.width = width;
+        msg.height = height;
+        client.send(msg);
+    }
+
+    public void onLocalImageMoved(int blockId, int newOffset) {
+        EditMessage msg = new EditMessage(Mode.IMAGE_MOVE, userId, null);
+        msg.blockId = blockId;
+        msg.newOffset = newOffset;
         client.send(msg);
     }
 
     // ===== 서버 -> UI 콜백 =====
+
     public void onConnectionStatus(String text) {
         ui.updateConnectionStatus(text);
     }
@@ -76,8 +95,17 @@ public class EditorController {
         ui.setFullDocument(text);
     }
 
-    public void onRemoteImageInsert(int offset, int blockId, byte[] payload) {
-        ui.applyImageInsert(offset, blockId, payload);
+    public void onRemoteImageInsert(int blockId, int offset,
+                                    int width, int height, byte[] data) {
+        ui.applyImageInsert(blockId, offset, width, height, data);
+    }
+
+    public void onRemoteImageResize(int blockId, int width, int height) {
+        ui.applyImageResize(blockId, width, height);
+    }
+
+    public void onRemoteImageMove(int blockId, int newOffset) {
+        ui.applyImageMove(blockId, newOffset);
     }
 
     public void onConnectionLost() {
