@@ -5,9 +5,6 @@ import client.controller.EditorController;
 import javax.swing.*;
 import java.awt.*;
 
-/**
- * UI 렌더링 및 레이아웃 담당
- */
 public class EditorMainUI extends JFrame {
 
     private EditorController controller;
@@ -118,7 +115,6 @@ public class EditorMainUI extends JFrame {
     }
 
     // ===== 상태 표시 =====
-
     public void updateLoginStatus(String text) {
         l_loginStatus.setText(text);
     }
@@ -127,14 +123,14 @@ public class EditorMainUI extends JFrame {
         l_connectionStatus.setText(text);
     }
 
-    // ===== 서버에서 온 텍스트 적용 =====
-
     public void applyInsert(int offset, String text) {
         textManager.applyInsert(offset, text);
+        imageManager.onTextInserted(offset, text.length());
     }
 
     public void applyDelete(int offset, int length) {
         textManager.applyDelete(offset, length);
+        imageManager.onTextDeleted(offset, length);
     }
 
     public void setFullDocument(String text) {
@@ -142,7 +138,6 @@ public class EditorMainUI extends JFrame {
     }
 
     // ===== 서버에서 온 이미지 적용 =====
-
     public void applyImageInsert(int blockId, int offset,
                                  int width, int height, byte[] data) {
         imageManager.insertImageRemote(blockId, offset, width, height, data);
@@ -157,7 +152,6 @@ public class EditorMainUI extends JFrame {
     }
 
     // ===== Controller 주입 =====
-
     public void setController(EditorController controller) {
         this.controller = controller;
 
@@ -165,11 +159,13 @@ public class EditorMainUI extends JFrame {
             @Override
             public void onTextInserted(int offset, String text) {
                 controller.onTextInserted(offset, text);
+                imageManager.onTextInserted(offset, text.length());
             }
 
             @Override
             public void onTextDeleted(int offset, int length) {
                 controller.onTextDeleted(offset, length);
+                imageManager.onTextDeleted(offset, length);
             }
 
             @Override
@@ -181,8 +177,7 @@ public class EditorMainUI extends JFrame {
 
         imageManager.setEventListener(new ImageEventListener() {
             @Override
-            public void onLocalImageInserted(int blockId, int offset,
-                                             int width, int height, byte[] data) {
+            public void onLocalImageInserted(int blockId, int offset, int width, int height, byte[] data) {
                 controller.onLocalImageInserted(blockId, offset, width, height, data);
             }
 
@@ -198,3 +193,4 @@ public class EditorMainUI extends JFrame {
         });
     }
 }
+

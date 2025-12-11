@@ -6,14 +6,12 @@ import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
 import javax.swing.text.JTextComponent;
 
-/**
- * 문서(JTextComponent) 관리 및 변경 감지
- */
 public class TextManager {
 
     private final JTextComponent editor;
     private DocumentChangeListener changeListener;
     private boolean ignoreEvents = false;
+    private boolean listenerRegistered = false;
 
     public interface DocumentChangeListener {
         void onTextInserted(int offset, String text);
@@ -30,6 +28,9 @@ public class TextManager {
     }
 
     public void registerListener() {
+        if (listenerRegistered) return;
+        listenerRegistered = true;
+
         editor.getDocument().addDocumentListener(new DocumentListener() {
 
             @Override
@@ -40,7 +41,7 @@ public class TextManager {
                     int offset = e.getOffset();
                     int length = e.getLength();
 
-                    // ✅ 여기! editor.getText() 대신 Document에서 직접 읽기
+                    // Document에서 직접 읽어서 삽입된 텍스트 확보
                     String inserted = editor.getDocument().getText(offset, length);
 
                     if (changeListener != null) {
@@ -60,13 +61,11 @@ public class TextManager {
 
             @Override
             public void changedUpdate(DocumentEvent e) {
-                // 스타일 변경 이벤트 → 여기서는 무시
             }
         });
     }
 
-
-    // ★ 여기 두 메서드가 문제였던 부분입니다.
+    // 원격 텍스트 삽입 적용
     public void applyInsert(int offset, String text) {
         ignoreEvents = true;
         try {
@@ -82,6 +81,7 @@ public class TextManager {
         }
     }
 
+    // 원격 텍스트 삭제 적용
     public void applyDelete(int offset, int length) {
         ignoreEvents = true;
         try {
@@ -96,7 +96,6 @@ public class TextManager {
                 try {
                     doc.remove(offset, actualLength);
                 } catch (BadLocationException e) {
-                    // 방어 코드
                 }
             }
         } finally {

@@ -92,8 +92,6 @@ public class Server {
     }
 
     // ==== 파일 입출력 ====
-
-    // 예) ui에서 server.saveDocumentToFile("autosave.bin") 이런 식으로 호출
     public void saveDocumentToFile(String path) {
         try {
             DocumentState state = doc.createState();

@@ -1,13 +1,12 @@
 package client.ui;
 
-import client.ui.image.ImageIOHelper;
-import client.ui.image.ImageInfo;
-import client.ui.image.ImageStore;
-import client.ui.image.ImageTransferSupport;
+import client.ui.image.*;
 
 import javax.swing.*;
 import javax.swing.text.StyledDocument;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 
 public class ImageManager {
 
@@ -17,18 +16,38 @@ public class ImageManager {
     private final JTextPane editor;
     private final TextManager textManager;
     private final ImageStore store = new ImageStore();
+    private final ImageResizer resizer;
+    private final ImageMover mover;
 
     private ImageEventListener eventListener;
+    private Integer draggingImageId = null; // 드래그 중인 이미지 ID(없으면 null)
 
     public ImageManager(JTextPane editor, TextManager textManager) {
         this.editor = editor;
         this.textManager = textManager;
-        // 붙여넣기 / Drag&Drop 은 헬퍼 클래스로 분리
+        this.resizer = new ImageResizer(editor, textManager, store);
+        this.mover = new ImageMover(editor, textManager, store);
+
+        // 붙여넣기 / Drag&Drop
         new ImageTransferSupport(editor, bytes -> insertImageLocal(bytes));
+
+        // 우클릭 메뉴 + Ctrl+휠 줌
+        installContextMenu();
+        installWheelZoom();
+        installDragMove();
     }
 
     public void setEventListener(ImageEventListener listener) {
         this.eventListener = listener;
+    }
+
+    // ===== 텍스트 변경에 따른 offset 조정 =====
+    public void onTextInserted(int offset, int length) {
+        store.shiftOnInsert(offset, length);
+    }
+
+    public void onTextDeleted(int offset, int length) {
+        store.shiftOnDelete(offset, length);
     }
 
     // ===== 로컬에서 이미지 삽입 =====
@@ -66,16 +85,76 @@ public class ImageManager {
 
     // ===== 서버에서 온 IMAGE_RESIZE / IMAGE_MOVE =====
     public void applyRemoteResize(int blockId, int width, int height) {
-        store.resize(blockId, width, height);
-        // TODO: 실제 아이콘의 크기를 재조정
+        resizer.applyRemoteResize(blockId, width, height);
     }
 
     public void applyRemoteMove(int blockId, int newOffset) {
-        store.move(blockId, newOffset);
-        // TODO: 실제 문서 내에서 아이콘 위치 재배치
+        mover.applyRemoteMove(blockId, newOffset);
     }
 
-    // ===== 내부 아이콘 삽입 공통 =====
+    // ===== 우클릭 컨텍스트 메뉴 =====
+    private void installContextMenu() {
+        editor.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) showPopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) showPopup(e);
+            }
+        });
+    }
+
+    private void showPopup(MouseEvent e) {
+        int pos = editor.viewToModel2D(e.getPoint());
+        if (pos < 0) return;
+
+        ImageInfo target = store.findByOffsetNear(pos);
+        if (target == null) return;
+
+        JPopupMenu menu = new JPopupMenu();
+        JMenuItem bigger = new JMenuItem("이미지 크게");
+        JMenuItem smaller = new JMenuItem("이미지 작게");
+
+        bigger.addActionListener(ev -> resizeImageById(target.id, 1.25));
+        smaller.addActionListener(ev -> resizeImageById(target.id, 0.8));
+
+        menu.add(bigger);
+        menu.add(smaller);
+        menu.show(editor, e.getX(), e.getY());
+    }
+
+    // ===== Ctrl + 휠 줌 =====
+    private void installWheelZoom() {
+        editor.addMouseWheelListener(e -> {
+            if (!e.isControlDown()) return;
+
+            int rotation = e.getWheelRotation();
+            double factor = (rotation < 0) ? 1.1 : 0.9;
+
+            int offset = editor.viewToModel2D(e.getPoint());
+            if (offset < 0) return;
+
+            resizeImageAtOffset(offset, factor);
+            e.consume();
+        });
+    }
+
+    // ===== 리사이즈 요청 → Resizer 위임 + 서버 통보 =====
+    private void resizeImageById(int blockId, double scale) {
+        ImageInfo info = resizer.resizeLocalByBlockId(blockId, scale);
+        if (info == null || eventListener == null) return;
+        eventListener.onLocalImageResized(info.id, info.width, info.height);
+    }
+
+    public void resizeImageAtOffset(int offset, double scale) {
+        ImageInfo info = resizer.resizeLocalAtOffset(offset, scale);
+        if (info == null || eventListener == null) return;
+        eventListener.onLocalImageResized(info.id, info.width, info.height);
+    }
+
     private void insertIconAt(int offset, byte[] data, int w, int h) {
         textManager.setIgnoreEvents(true);
         try {
@@ -89,4 +168,59 @@ public class ImageManager {
             textManager.setIgnoreEvents(false);
         }
     }
+
+    // ===== 이미지 드래그 이동 =====
+    private void installDragMove() {
+        // 마우스 버튼 press/release로 드래그 시작/종료 감지
+        editor.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (!SwingUtilities.isLeftMouseButton(e)) return;
+
+                int pos = editor.viewToModel2D(e.getPoint());
+                if (pos < 0) {
+                    draggingImageId = null;
+                    return;
+                }
+
+                ImageInfo target = store.findByOffsetNear(pos);
+                if (target != null) {
+                    draggingImageId = target.id;
+                } else {
+                    draggingImageId = null;
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (!SwingUtilities.isLeftMouseButton(e)) return;
+                if (draggingImageId == null) return;
+
+                int dropPos = editor.viewToModel2D(e.getPoint());
+                if (dropPos >= 0) {
+                    moveImageLocal(draggingImageId, dropPos);
+                }
+                draggingImageId = null;
+            }
+        });
+
+        editor.addMouseMotionListener(new java.awt.event.MouseMotionAdapter() {
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (draggingImageId == null) return;
+                int pos = editor.viewToModel2D(e.getPoint());
+                if (pos >= 0) {
+                    editor.setCaretPosition(pos);
+                }
+            }
+        });
+    }
+
+    // ===== 로컬 이동 요청 → mover + 서버 통보 =====
+    private void moveImageLocal(int blockId, int newOffset) {
+        ImageInfo info = mover.moveLocal(blockId, newOffset);
+        if (info == null || eventListener == null) return;
+        eventListener.onLocalImageMoved(info.id, info.offset);
+    }
+
 }
