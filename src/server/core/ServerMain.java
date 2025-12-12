@@ -29,5 +29,4 @@ public class ServerMain {
         ui.printDisplay("IP : " + config.ip);
         ui.printDisplay("PORT : " + config.port);
     }
-
 }

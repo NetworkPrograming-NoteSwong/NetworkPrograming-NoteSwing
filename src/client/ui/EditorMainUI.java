@@ -1,30 +1,38 @@
 package client.ui;
 
 import client.controller.EditorController;
+import global.object.DocumentMeta;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.List;
 
 public class EditorMainUI extends JFrame {
 
     private EditorController controller;
 
-    // 상단 바
     private JLabel l_loginStatus;
     private JButton b_login;
     private JButton b_logout;
 
-    // 왼쪽 문서 리스트
-    private JList<String> list_docs;
+    private JLabel l_docTitle;
 
-    // 중앙 에디터
+    private JList<DocumentMeta> list_docs;
+    private DefaultListModel<DocumentMeta> docModel;
+    private boolean updatingDocList = false;
+
+    private JButton b_newDoc;
+    private JButton b_deleteDoc;
+    private JButton b_refresh;
+
     private JTextPane t_editor;
     private TextManager textManager;
     private ImageManager imageManager;
 
-    // 하단 상태바
     private JLabel l_connectionStatus;
     private JLabel l_mode;
+
+    private String currentDocId = null;
 
     public EditorMainUI() {
         super("NoteSwing Client");
@@ -50,7 +58,7 @@ public class EditorMainUI extends JFrame {
         JPanel p_left = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 0));
         JLabel l_appName = new JLabel("NoteSwing");
         l_appName.setFont(l_appName.getFont().deriveFont(Font.BOLD, 18f));
-        JLabel l_docTitle = new JLabel(" / Untitled Document");
+        l_docTitle = new JLabel(" / (no document)");
         p_left.add(l_appName);
         p_left.add(l_docTitle);
 
@@ -70,21 +78,72 @@ public class EditorMainUI extends JFrame {
 
     private JComponent createCenterPanel() {
         JPanel p_sidebar = new JPanel(new BorderLayout());
-        p_sidebar.setBorder(
-                BorderFactory.createMatteBorder(0, 0, 0, 1,
-                        new Color(220, 220, 220)));
+        p_sidebar.setBorder(BorderFactory.createMatteBorder(0, 0, 0, 1, new Color(220, 220, 220)));
 
         JLabel l_sideTitle = new JLabel("문서");
         l_sideTitle.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
         p_sidebar.add(l_sideTitle, BorderLayout.NORTH);
 
-        DefaultListModel<String> model = new DefaultListModel<>();
-        model.addElement("Untitled Document");
-        model.addElement("Project Plan");
-        model.addElement("README.md");
-        list_docs = new JList<>(model);
+        docModel = new DefaultListModel<>();
+        list_docs = new JList<>(docModel);
+        list_docs.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        list_docs.addListSelectionListener(e -> {
+            if (e.getValueIsAdjusting()) return;
+            if (updatingDocList) return;
+            if (controller == null) return;
+
+            DocumentMeta meta = list_docs.getSelectedValue();
+            if (meta == null || meta.id == null) return;
+            if (meta.id.equals(currentDocId)) return;
+
+            preClearForDocSwitch(meta.title);
+            controller.openDocument(meta.id);
+        });
+
         p_sidebar.add(new JScrollPane(list_docs), BorderLayout.CENTER);
 
+        // 버튼 바
+        JPanel p_btns = new JPanel(new GridLayout(1, 3, 6, 0));
+        p_btns.setBorder(BorderFactory.createEmptyBorder(8, 8, 8, 8));
+
+        b_newDoc = new JButton("새 문서");
+        b_deleteDoc = new JButton("삭제");
+        b_refresh = new JButton("새로고침");
+
+        b_newDoc.addActionListener(e -> {
+            if (controller == null) return;
+            String title = JOptionPane.showInputDialog(this, "문서 제목을 입력하세요:", "새 문서", JOptionPane.PLAIN_MESSAGE);
+            if (title == null) return;
+            controller.createDocument(title);
+        });
+
+        b_deleteDoc.addActionListener(e -> {
+            if (controller == null) return;
+            DocumentMeta meta = list_docs.getSelectedValue();
+            if (meta == null || meta.id == null) return;
+
+            int ok = JOptionPane.showConfirmDialog(this,
+                    "정말 삭제할까요?\n- " + meta.toString(),
+                    "문서 삭제", JOptionPane.YES_NO_OPTION);
+
+            if (ok == JOptionPane.YES_OPTION) {
+                controller.deleteDocument(meta.id);
+            }
+        });
+
+        b_refresh.addActionListener(e -> {
+            if (controller == null) return;
+            controller.requestDocList();
+        });
+
+        p_btns.add(b_newDoc);
+        p_btns.add(b_deleteDoc);
+        p_btns.add(b_refresh);
+
+        p_sidebar.add(p_btns, BorderLayout.SOUTH);
+
+        // 에디터
         JPanel p_editor = new JPanel(new BorderLayout());
         t_editor = new JTextPane();
         t_editor.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
@@ -93,11 +152,8 @@ public class EditorMainUI extends JFrame {
         textManager = new TextManager(t_editor);
         imageManager = new ImageManager(t_editor, textManager);
 
-        JSplitPane split = new JSplitPane(
-                JSplitPane.HORIZONTAL_SPLIT,
-                p_sidebar,
-                p_editor);
-        split.setDividerLocation(220);
+        JSplitPane split = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, p_sidebar, p_editor);
+        split.setDividerLocation(260);
         split.setOneTouchExpandable(true);
         return split;
     }
@@ -114,18 +170,60 @@ public class EditorMainUI extends JFrame {
         return p;
     }
 
-    // ===== 상태 표시 =====
-    public void updateLoginStatus(String text) {
-        l_loginStatus.setText(text);
+    private void preClearForDocSwitch(String title) {
+        imageManager.clearAll();
+        textManager.setFullDocument("");
+        setDocTitle(title);
     }
 
-    public void updateConnectionStatus(String text) {
-        l_connectionStatus.setText(text);
+    public void setDocumentList(List<DocumentMeta> docs) {
+        updatingDocList = true;
+        try {
+            docModel.clear();
+            if (docs != null) {
+                for (DocumentMeta m : docs) docModel.addElement(m);
+            }
+
+            // 현재 문서가 목록에 있으면 유지 선택
+            if (currentDocId != null) {
+                for (int i = 0; i < docModel.size(); i++) {
+                    DocumentMeta m = docModel.get(i);
+                    if (m != null && currentDocId.equals(m.id)) {
+                        list_docs.setSelectedIndex(i);
+                        return;
+                    }
+                }
+            }
+
+        } finally {
+            updatingDocList = false;
+        }
+
+        // 아무것도 선택 안돼있으면 첫 문서 자동 선택(→ DOC_OPEN 발생)
+        if (docModel.size() > 0 && list_docs.getSelectedIndex() == -1) {
+            list_docs.setSelectedIndex(0);
+        }
     }
+
+    public void onSnapshotFullSync(String docId, String title, String text) {
+        this.currentDocId = docId;
+        setDocTitle(title);
+
+        imageManager.clearAll();
+        textManager.setFullDocument(text == null ? "" : text);
+    }
+
+    private void setDocTitle(String title) {
+        String t = (title == null || title.isBlank()) ? "Untitled" : title;
+        l_docTitle.setText(" / " + t);
+    }
+
+    public void updateLoginStatus(String text) { l_loginStatus.setText(text); }
+    public void updateConnectionStatus(String text) { l_connectionStatus.setText(text); }
 
     public void applyInsert(int offset, String text) {
         textManager.applyInsert(offset, text);
-        imageManager.onTextInserted(offset, text.length());
+        imageManager.onTextInserted(offset, text == null ? 0 : text.length());
     }
 
     public void applyDelete(int offset, int length) {
@@ -133,13 +231,7 @@ public class EditorMainUI extends JFrame {
         imageManager.onTextDeleted(offset, length);
     }
 
-    public void setFullDocument(String text) {
-        textManager.setFullDocument(text);
-    }
-
-    // ===== 서버에서 온 이미지 적용 =====
-    public void applyImageInsert(int blockId, int offset,
-                                 int width, int height, byte[] data) {
+    public void applyImageInsert(int blockId, int offset, int width, int height, byte[] data) {
         imageManager.insertImageRemote(blockId, offset, width, height, data);
     }
 
@@ -151,7 +243,6 @@ public class EditorMainUI extends JFrame {
         imageManager.applyRemoteMove(blockId, newOffset);
     }
 
-    // ===== Controller 주입 =====
     public void setController(EditorController controller) {
         this.controller = controller;
 
@@ -193,4 +284,3 @@ public class EditorMainUI extends JFrame {
         });
     }
 }
-

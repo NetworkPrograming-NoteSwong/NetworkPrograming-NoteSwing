@@ -9,8 +9,8 @@ import java.net.Socket;
 
 public class Client {
 
-    private String serverIp;
-    private int serverPort;
+    private final String serverIp;
+    private final int serverPort;
 
     private Socket socket;
     private ObjectOutputStream out;
@@ -22,57 +22,48 @@ public class Client {
     public Client(EditorController controller) {
         this.controller = controller;
 
-        // server.txt 읽기
         ConfigReader.ServerConfig config = ConfigReader.load("server.txt");
         this.serverIp = config.ip;
         this.serverPort = config.port;
     }
 
-    // 프로그램 시작 시 자동 연결 시도
     public void connectToServer() {
         new Thread(() -> {
             try {
                 socket = new Socket(serverIp, serverPort);
 
-                // 객체 스트림 생성
                 out = new ObjectOutputStream(socket.getOutputStream());
                 out.flush();
                 in = new ObjectInputStream(socket.getInputStream());
 
-                controller.onConnectionStatus("서버 연결 완료");
                 connected = true;
+                controller.onConnectionStatus("서버 연결 완료");
 
-                // 메시지 수신 스레드 시작
+                // 수신 스레드
                 new ClientReceiver(in, controller).start();
+
+                // 연결 완료 콜백(문서 목록 요청)
+                controller.onConnected();
 
             } catch (Exception e) {
                 connected = false;
-                System.err.println("서버 연결 실패: " + e.getMessage());
                 controller.onConnectionStatus("서버 연결 실패");
             }
-
         }).start();
     }
 
-
-    // 서버로 메시지 보내기
     public void send(EditMessage msg) {
-        if (!connected) return;
-
+        if (!connected || msg == null) return;
         try {
             out.writeObject(msg);
-            out.flush(); //즉시 전송
-        } catch (Exception e) {
-            System.err.println("전송 오류: " + e.getMessage());
-        }
+            out.flush();
+        } catch (Exception ignored) {}
     }
 
-    // 종료
     public void disconnect() {
         try {
             connected = false;
             if (socket != null) socket.close();
         } catch (Exception ignored) {}
     }
-
 }

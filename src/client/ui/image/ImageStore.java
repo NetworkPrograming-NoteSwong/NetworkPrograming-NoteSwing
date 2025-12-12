@@ -9,6 +9,11 @@ public class ImageStore {
     private final Map<Integer, ImageInfo> images = new HashMap<>();
     private int nextId = 1;
 
+    public void clear() {
+        images.clear();
+        nextId = 1;
+    }
+
     public ImageInfo createLocalImage(int offset, int width, int height, byte[] data) {
         ImageInfo info = new ImageInfo();
         info.id = nextId++;
@@ -49,13 +54,11 @@ public class ImageStore {
         info.offset = newOffset;
     }
 
-    // ==== 텍스트 삽입/삭제에 따른 offset 조정 ====
+    // 텍스트 삽입/삭제에 따른 offset 조정
     public void shiftOnInsert(int fromOffset, int delta) {
         if (delta == 0) return;
         for (ImageInfo info : images.values()) {
-            if (info.offset >= fromOffset) {
-                info.offset += delta;
-            }
+            if (info.offset >= fromOffset) info.offset += delta;
         }
     }
 
@@ -74,14 +77,28 @@ public class ImageStore {
         }
     }
 
-    // ==== 오프셋으로 이미지 찾기 (우클릭 hit-test에 사용) ====
+    // MOVE 전용 shift (remove/insert가 1글자씩 발생)
+    public void shiftForMoveRemove(int movedId, int oldOffset) {
+        for (ImageInfo info : images.values()) {
+            if (info.id == movedId) continue;
+            if (info.offset > oldOffset) info.offset -= 1;
+        }
+    }
+
+    public void shiftForMoveInsert(int movedId, int newOffset) {
+        for (ImageInfo info : images.values()) {
+            if (info.id == movedId) continue;
+            if (info.offset >= newOffset) info.offset += 1;
+        }
+    }
+
     public ImageInfo findByOffsetNear(int offset) {
         ImageInfo best = null;
         int bestDist = Integer.MAX_VALUE;
 
         for (ImageInfo info : images.values()) {
             int dist = Math.abs(info.offset - offset);
-            if (dist < bestDist && dist <= 1) { // offset 또는 offset±1 정도까지 허용
+            if (dist < bestDist && dist <= 1) {
                 bestDist = dist;
                 best = info;
             }

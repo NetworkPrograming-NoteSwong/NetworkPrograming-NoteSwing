@@ -10,7 +10,6 @@ import java.awt.event.KeyEvent;
 import java.io.File;
 import java.util.List;
 
-//JTextPane에 대한 이미지 붙여넣기(Ctrl+V) + Drag&Drop 지원.
 public class ImageTransferSupport {
 
     public interface InsertHandler {

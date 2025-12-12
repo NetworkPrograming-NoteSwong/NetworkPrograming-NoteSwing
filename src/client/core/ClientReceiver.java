@@ -22,22 +22,14 @@ public class ClientReceiver extends Thread {
                 EditMessage msg = (EditMessage) in.readObject();
 
                 switch (msg.mode) {
-                    case INSERT ->
-                            controller.onRemoteInsert(msg.offset, msg.text);
-                    case DELETE ->
-                            controller.onRemoteDelete(msg.offset, msg.length);
-                    case FULL_SYNC ->
-                            controller.onRemoteFullSync(msg.text);
-                    case IMAGE_INSERT ->
-                            controller.onRemoteImageInsert(
-                                    msg.blockId, msg.offset,
-                                    msg.width, msg.height, msg.payload);
-                    case IMAGE_RESIZE ->
-                            controller.onRemoteImageResize(
-                                    msg.blockId, msg.width, msg.height);
-                    case IMAGE_MOVE ->
-                            controller.onRemoteImageMove(
-                                    msg.blockId, msg.newOffset);
+                    case DOC_LIST -> controller.onRemoteDocList(msg.docs);
+                    case FULL_SYNC -> controller.onRemoteFullSync(msg.docId, msg.docTitle, msg.text);
+                    case SYNC_END -> controller.onRemoteSyncEnd(msg.docId);
+                    case INSERT -> controller.onRemoteInsert(msg.docId, msg.offset, msg.text);
+                    case DELETE -> controller.onRemoteDelete(msg.docId, msg.offset, msg.length);
+                    case IMAGE_INSERT -> controller.onRemoteImageInsert(msg.docId, msg.blockId, msg.offset, msg.width, msg.height, msg.payload);
+                    case IMAGE_RESIZE -> controller.onRemoteImageResize(msg.docId, msg.blockId, msg.width, msg.height);
+                    case IMAGE_MOVE -> controller.onRemoteImageMove(msg.docId, msg.blockId, msg.newOffset);
                     default -> { /* JOIN/LEAVE 등은 무시 */ }
                 }
             }

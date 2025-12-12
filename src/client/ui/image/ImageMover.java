@@ -18,7 +18,6 @@ public class ImageMover {
         this.store = store;
     }
 
-    // 로컬에서 드래그로 이동할 때 사용
     public ImageInfo moveLocal(int blockId, int targetOffset) {
         ImageInfo info = store.get(blockId);
         if (info == null) return null;
@@ -26,7 +25,6 @@ public class ImageMover {
         return store.get(blockId);
     }
 
-    // IMAGE_MOVE 적용
     public void applyRemoteMove(int blockId, int targetOffset) {
         ImageInfo info = store.get(blockId);
         if (info == null) return;
@@ -43,20 +41,19 @@ public class ImageMover {
             int newOffset = Math.max(0, Math.min(targetOffset, docLen));
             if (oldOffset == newOffset) return;
 
-            // 기존 위치의 placeholder 삭제
+            // 1) 기존 위치 1글자 제거 (아이콘 placeholder)
             if (oldOffset >= 0 && oldOffset < docLen) {
                 doc.remove(oldOffset, 1);
-                // 앞에서 삭제했으니, 목표 위치가 뒤쪽이면 한 칸 당겨야 함
-                if (newOffset > oldOffset) {
-                    newOffset--;
-                }
+                store.shiftForMoveRemove(info.id, oldOffset);
+                if (newOffset > oldOffset) newOffset--;
             }
 
             int safeNew = Math.max(0, Math.min(newOffset, doc.getLength()));
             editor.setCaretPosition(safeNew);
 
-            ImageIcon icon = ImageIOHelper.createScaledIcon(
-                    info.data, info.width, info.height);
+            // 2) 새 위치에 삽입 (아이콘 placeholder 1글자 추가)
+            store.shiftForMoveInsert(info.id, safeNew);
+            ImageIcon icon = ImageIOHelper.createScaledIcon(info.data, info.width, info.height);
             editor.insertIcon(icon);
 
             info.offset = safeNew;

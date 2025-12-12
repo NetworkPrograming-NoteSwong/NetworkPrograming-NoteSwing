@@ -105,5 +105,4 @@ public class ServerDashboardUI {
     public void setOnStopServer(Runnable r) {
         this.onStopServer = r;
     }
-
 }
