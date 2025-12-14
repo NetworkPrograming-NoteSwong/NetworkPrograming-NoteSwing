@@ -66,8 +66,7 @@ public class LineLockController {
     }
 
     public void onRemoteUnlock(int lineIndex, String ownerId) {
-        String removed = ownerByLine.remove(lineIndex);
-        System.out.println("[DEBUG] UNLOCK: lineIndex=" + lineIndex + ", was owner=" + removed);
+        ownerByLine.remove(lineIndex);
 
         // 하이라이트만 제거 (내 락이든 다른 사람 락이든)
         ui.unlockLine(lineIndex, ownerId);

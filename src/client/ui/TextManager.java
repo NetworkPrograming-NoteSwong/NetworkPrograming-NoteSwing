@@ -165,16 +165,6 @@ public class TextManager {
         } catch (Exception ignored) {}
     }
 
-    public void clearAllLineHighlights() {
-        try {
-            Highlighter h = editor.getHighlighter();
-            for (Object tag : highlightTags.values()) {
-                h.removeHighlight(tag);
-            }
-            highlightTags.clear();
-        } catch (Exception ignored) {}
-    }
-
     private int getLineStartOffset(int lineIndex) {
         try {
             Document doc = editor.getDocument();
