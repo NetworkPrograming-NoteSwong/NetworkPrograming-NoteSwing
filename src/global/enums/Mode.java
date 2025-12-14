@@ -13,5 +13,7 @@ public enum Mode {
     DOC_LIST,     // 문서 목록 요청/응답
     DOC_CREATE,   // 문서 생성
     DOC_DELETE,   // 문서 삭제
-    SYNC_END      // 스냅샷(이미지 포함) 전송 완료 알림
+    SYNC_END,     // 스냅샷(이미지 포함) 전송 완료 알림
+    LOCK,
+    UNLOCK
 }
