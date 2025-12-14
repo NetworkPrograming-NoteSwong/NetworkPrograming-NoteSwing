@@ -123,14 +123,14 @@ public class Server {
 
     private void handleLock(EditMessage msg) {
         String docId = msg.docId;
-        int lineIndex = msg.blockId; // lineIndex로 사용
+        int lineIndex = msg.blockId;
         String userId = msg.userId;
 
         String owner = lockManager.tryLock(docId, lineIndex, userId);
         EditMessage resp = new EditMessage(Mode.LOCK, owner, null);
         resp.docId = docId;
         resp.blockId = lineIndex;
-        resp.userId = owner; // 해당 라인의 락 소유자
+        resp.userId = owner;
 
         // 같은 문서 편집 중인 모든 클라이언트에게 브로드캐스트
         broadcastToDoc(docId, resp);
@@ -154,6 +154,9 @@ public class Server {
     public void onClientDisconnected(ClientHandler h) {
         try { h.close(); } catch (Exception ignored) {}
         docService.leave(h);
+
+        String userId = h.getUserId();
+        lockManager.releaseAllByUser(userId);
 
         synchronized (handlers) {
             handlers.remove(h);

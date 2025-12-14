@@ -16,6 +16,7 @@ public class ClientHandler extends Thread {
     private ObjectOutputStream out;
 
     private volatile String currentDocId = null;
+    private String userId;
 
     public ClientHandler(Socket socket, Server server, ServerDashboardUI ui) {
         this.clientSocket = socket;
@@ -36,6 +37,15 @@ public class ClientHandler extends Thread {
         try {
             while (true) {
                 EditMessage msg = (EditMessage) in.readObject();
+
+                if (msg.userId != null && userId == null) {
+                    userId = msg.userId;
+                }
+
+                if (msg.docId != null) {
+                    currentDocId = msg.docId;
+                }
+
                 server.handleFromClient(msg, this);
             }
         } catch (Exception e) {
@@ -62,4 +72,8 @@ public class ClientHandler extends Thread {
     public String getCurrentDocId() { return currentDocId; }
 
     public void setCurrentDocId(String docId) { this.currentDocId = docId; }
+
+    public String getUserId() {
+        return userId;
+    }
 }
