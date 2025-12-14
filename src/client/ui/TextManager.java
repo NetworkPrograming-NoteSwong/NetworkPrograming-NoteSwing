@@ -4,7 +4,13 @@ import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
+import javax.swing.text.Highlighter;
 import javax.swing.text.JTextComponent;
+import java.awt.*;
+import java.util.HashMap;
+import java.util.Map;
+import javax.swing.text.Element;
+import javax.swing.text.DefaultHighlighter;
 
 public class TextManager {
 
@@ -12,6 +18,9 @@ public class TextManager {
     private DocumentChangeListener changeListener;
     private boolean ignoreEvents = false;
     private boolean listenerRegistered = false;
+    private Map<Integer, Object> highlightTags = new HashMap<>();
+    private Object currentLineHighlightTag = null;
+
 
     public interface DocumentChangeListener {
         void onTextInserted(int offset, String text);
@@ -119,4 +128,91 @@ public class TextManager {
     public void setIgnoreEvents(boolean ignore) {
         this.ignoreEvents = ignore;
     }
+
+    public void highlightLine(int lineIndex, Color color) {
+        try {
+            Highlighter h = editor.getHighlighter();
+            Document doc = editor.getDocument();
+
+            // 해당 줄의 시작과 끝 offset 계산
+            int lineStart = getLineStartOffset(lineIndex);
+            int lineEnd = getLineEndOffset(lineIndex);
+
+            if (lineStart < 0 || lineEnd < 0) return;
+
+            // 이미 하이라이트 되어있으면 제거
+            if (highlightTags.containsKey(lineIndex)) {
+                h.removeHighlight(highlightTags.get(lineIndex));
+            }
+
+            // 새로 하이라이트
+            Object tag = h.addHighlight(lineStart, lineEnd,
+                    new DefaultHighlighter.DefaultHighlightPainter(color));
+            highlightTags.put(lineIndex, tag);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public void clearLineHighlight(int lineIndex) {
+        try {
+            Highlighter h = editor.getHighlighter();
+            if (highlightTags.containsKey(lineIndex)) {
+                h.removeHighlight(highlightTags.get(lineIndex));
+                highlightTags.remove(lineIndex);
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public void clearAllLineHighlights() {
+        try {
+            Highlighter h = editor.getHighlighter();
+            for (Object tag : highlightTags.values()) {
+                h.removeHighlight(tag);
+            }
+            highlightTags.clear();
+        } catch (Exception ignored) {}
+    }
+
+    private int getLineStartOffset(int lineIndex) {
+        try {
+            Document doc = editor.getDocument();
+            int offset = 0;
+            int currentLine = 0;
+
+            for (int i = 0; i < doc.getLength(); i++) {
+                if (currentLine == lineIndex) return offset;
+                if (doc.getText(i, 1).equals("\n")) {
+                    currentLine++;
+                    offset = i + 1;
+                }
+            }
+            return (currentLine == lineIndex) ? offset : -1;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    private int getLineEndOffset(int lineIndex) {
+        try {
+            Document doc = editor.getDocument();
+            int offset = 0;
+            int currentLine = 0;
+
+            for (int i = 0; i < doc.getLength(); i++) {
+                if (currentLine == lineIndex && doc.getText(i, 1).equals("\n")) {
+                    return i;
+                }
+                if (doc.getText(i, 1).equals("\n")) {
+                    currentLine++;
+                    offset = i + 1;
+                }
+            }
+            return (currentLine == lineIndex) ? doc.getLength() : -1;
+        } catch (Exception e) {
+            return -1;
+        }
+    }
 }
+

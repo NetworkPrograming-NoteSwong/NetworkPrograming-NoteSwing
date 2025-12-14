@@ -4,7 +4,9 @@ import client.controller.EditorController;
 import global.object.DocumentMeta;
 
 import javax.swing.*;
+import javax.swing.text.Document;
 import java.awt.*;
+import java.awt.event.KeyAdapter;
 import java.util.List;
 
 public class EditorMainUI extends JFrame {
@@ -33,6 +35,7 @@ public class EditorMainUI extends JFrame {
     private JLabel l_mode;
 
     private String currentDocId = null;
+    private Integer lastKeyPressLineIndex = null;
 
     public EditorMainUI() {
         super("NoteSwing Client");
@@ -147,6 +150,42 @@ public class EditorMainUI extends JFrame {
         JPanel p_editor = new JPanel(new BorderLayout());
         t_editor = new JTextPane();
         t_editor.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 14));
+
+        t_editor.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyReleased(java.awt.event.KeyEvent e) {
+                if (controller == null) return;
+
+                int currentLine = getLineIndexFromCaretPosition();
+
+                // 줄이 바뀌었으면
+                if (lastKeyPressLineIndex != null && lastKeyPressLineIndex != currentLine) {
+                    controller.onLineSwitched(lastKeyPressLineIndex, currentLine);
+                }
+
+                lastKeyPressLineIndex = currentLine;
+            }
+        });
+
+// KeyTyped는 다른 사람이 잠근 줄에 입력하려고 할 때만 막기
+        t_editor.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyTyped(java.awt.event.KeyEvent e) {
+                if (controller == null) return;
+
+                char ch = e.getKeyChar();
+                if (!Character.isISOControl(ch) || ch == '\n' || ch == '\b') {
+                    int lineIndex = getLineIndexFromCaretPosition();
+
+                    if (controller.isLineLockedByOther(lineIndex)) {
+                        showLineLockedDialog(lineIndex);
+                        e.consume();
+                    }
+                }
+            }
+        });
+
+
         p_editor.add(new JScrollPane(t_editor), BorderLayout.CENTER);
 
         textManager = new TextManager(t_editor);
@@ -205,6 +244,21 @@ public class EditorMainUI extends JFrame {
         }
     }
 
+    public int getLineIndexFromCaretPosition() {
+        try {
+            int caretPos = t_editor.getCaretPosition();
+            Document doc = t_editor.getDocument();
+            String text = doc.getText(0, caretPos);
+            int line = 0;
+            for (int i = 0; i < text.length(); i++) {
+                if (text.charAt(i) == '\n') line++;
+            }
+            return line;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
     public void onSnapshotFullSync(String docId, String title, String text) {
         this.currentDocId = docId;
         setDocTitle(title);
@@ -241,6 +295,27 @@ public class EditorMainUI extends JFrame {
 
     public void applyImageMove(int blockId, int newOffset) {
         imageManager.applyRemoteMove(blockId, newOffset);
+    }
+
+    public void lockLine(int lineIndex, String ownerId) {
+        textManager.highlightLine(lineIndex, new Color(255, 200, 200));
+    }
+
+    public void unlockLine(int lineIndex, String ownerId) {
+        textManager.clearLineHighlight(lineIndex);
+    }
+
+    public void clearAllLineHighlights() {
+        textManager.clearLineHighlight(-1); // 구현을 "모든 하이라이트 제거" 쪽으로 바꾸면 더 좋음
+    }
+
+    public void showLineLockedDialog(int lineIndex) {
+        JOptionPane.showMessageDialog(
+                this,
+                "현재 " + (lineIndex + 1) + "번째 줄은 다른 사용자가 편집 중이라 수정할 수 없습니다.",
+                "편집 불가",
+                JOptionPane.INFORMATION_MESSAGE
+        );
     }
 
     public void setController(EditorController controller) {

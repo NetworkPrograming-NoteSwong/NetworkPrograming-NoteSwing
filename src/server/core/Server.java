@@ -1,5 +1,6 @@
 package server.core;
 
+import client.ui.LineLockManager;
 import global.enums.Mode;
 import global.object.DocumentMeta;
 import global.object.EditMessage;
@@ -24,6 +25,7 @@ public class Server {
     private ServerSocket serverSocket;
 
     private final List<ClientHandler> handlers = new ArrayList<>();
+    private final LineLockManager lockManager = new LineLockManager();
 
     public Server(int port, ServerDashboardUI ui) {
         this.port = port;
@@ -72,6 +74,8 @@ public class Server {
         ui.printDisplay("[FROM CLIENT] " + msg);
 
         switch (msg.mode) {
+            case LOCK -> handleLock(msg);
+            case UNLOCK -> handleUnlock(msg);
             case DOC_LIST -> sendDocListTo(sender);
             case DOC_OPEN -> {
                 if (msg.docId != null) {
@@ -117,6 +121,36 @@ public class Server {
         }
     }
 
+    private void handleLock(EditMessage msg) {
+        String docId = msg.docId;
+        int lineIndex = msg.blockId; // lineIndex로 사용
+        String userId = msg.userId;
+
+        String owner = lockManager.tryLock(docId, lineIndex, userId);
+        EditMessage resp = new EditMessage(Mode.LOCK, owner, null);
+        resp.docId = docId;
+        resp.blockId = lineIndex;
+        resp.userId = owner; // 해당 라인의 락 소유자
+
+        // 같은 문서 편집 중인 모든 클라이언트에게 브로드캐스트
+        broadcastToDoc(docId, resp);
+    }
+
+    private void handleUnlock(EditMessage msg) {
+        String docId = msg.docId;
+        int lineIndex = msg.blockId;
+        String userId = msg.userId;
+
+        lockManager.unlock(docId, lineIndex, userId);
+
+        EditMessage resp = new EditMessage(Mode.UNLOCK, userId, null);
+        resp.docId = docId;
+        resp.blockId = lineIndex;
+        resp.userId = userId;
+
+        broadcastToDoc(docId, resp);
+    }
+
     public void onClientDisconnected(ClientHandler h) {
         try { h.close(); } catch (Exception ignored) {}
         docService.leave(h);
@@ -142,4 +176,16 @@ public class Server {
             }
         }
     }
+
+    private void broadcastToDoc(String docId, EditMessage msg) {
+        synchronized (handlers) {
+            for (ClientHandler h : handlers) {
+                // 그 클라이언트가 지금 보고 있는 문서가 docId인 경우에만 전송
+                if (docId.equals(h.getCurrentDocId())) {
+                    h.send(msg);
+                }
+            }
+        }
+    }
+
 }

@@ -30,6 +30,8 @@ public class ClientReceiver extends Thread {
                     case IMAGE_INSERT -> controller.onRemoteImageInsert(msg.docId, msg.blockId, msg.offset, msg.width, msg.height, msg.payload);
                     case IMAGE_RESIZE -> controller.onRemoteImageResize(msg.docId, msg.blockId, msg.width, msg.height);
                     case IMAGE_MOVE -> controller.onRemoteImageMove(msg.docId, msg.blockId, msg.newOffset);
+                    case LOCK -> controller.onRemoteLock(msg.blockId, msg.userId);
+                    case UNLOCK -> controller.onRemoteUnlock(msg.blockId, msg.userId);
                     default -> { /* JOIN/LEAVE 등은 무시 */ }
                 }
             }

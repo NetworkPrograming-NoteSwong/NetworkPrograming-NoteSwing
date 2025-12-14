@@ -15,11 +15,14 @@ public class EditorController {
     private final String userId;
 
     private volatile String currentDocId = null;
+    private final LineLockController lockController;
+    private Integer myLockedLineIndex = null; //내가 편집하고 있는 라인 인덱스
 
     public EditorController(EditorMainUI ui, String userId) {
         this.ui = ui;
         this.userId = userId;
         this.client = new Client(this);
+        this.lockController = new LineLockController(client, ui, userId);
     }
 
     public void start() {
@@ -75,6 +78,28 @@ public class EditorController {
     public void onFullDocumentChanged(String fullText) {
     }
 
+    public void onLineSwitched(int fromLine, int toLine) {
+        if (currentDocId == null) return;
+
+        // 이전 줄 UNLOCK
+        if (lockController.isLockedByMe(fromLine)) {
+            lockController.unlock(currentDocId, fromLine);
+        }
+
+        // 새 줄이 다른 사람이 잠금?
+        if (lockController.isLockedByOther(toLine)) {
+            ui.showLineLockedDialog(toLine);
+            return;
+        }
+
+        // 새 줄 LOCK
+        if (!lockController.isLockedByMe(toLine)) {
+            lockController.requestLock(currentDocId, toLine);
+        }
+
+        myLockedLineIndex = toLine;
+    }
+
     public void onLocalImageInserted(int blockId, int offset, int width, int height, byte[] data) {
         if (currentDocId == null) return;
         EditMessage msg = new EditMessage(Mode.IMAGE_INSERT, userId, null);
@@ -117,6 +142,13 @@ public class EditorController {
 
     public void onRemoteFullSync(String docId, String title, String text) {
         this.currentDocId = docId;
+
+        if (myLockedLineIndex != null && lockController.isLockedByMe(myLockedLineIndex)) {
+            lockController.unlock(currentDocId, myLockedLineIndex);
+        }
+
+        myLockedLineIndex = null;
+        lockController.resetAllLocks();
         ui.onSnapshotFullSync(docId, title, text);
     }
 
@@ -128,10 +160,13 @@ public class EditorController {
         ui.applyInsert(offset, text);
     }
 
+
+
     public void onRemoteDelete(String docId, int offset, int length) {
         if (currentDocId == null || !currentDocId.equals(docId)) return;
         ui.applyDelete(offset, length);
     }
+
 
     public void onRemoteImageInsert(String docId, int blockId, int offset, int width, int height, byte[] data) {
         if (currentDocId == null || !currentDocId.equals(docId)) return;
@@ -148,7 +183,19 @@ public class EditorController {
         ui.applyImageMove(blockId, newOffset);
     }
 
+    public void onRemoteLock(int lineIndex, String userId) {
+        lockController.onRemoteLock(lineIndex, userId);
+    }
+
+    public void onRemoteUnlock(int lineIndex, String userId) {
+        lockController.onRemoteUnlock(lineIndex, userId);
+    }
+
     public void onConnectionLost() {
         ui.updateConnectionStatus("서버 연결 끊김");
+    }
+
+    public boolean isLineLockedByOther(int lineIndex) {
+        return lockController.isLockedByOther(lineIndex);
     }
 }
