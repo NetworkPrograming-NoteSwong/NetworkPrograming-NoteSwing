@@ -59,11 +59,4 @@ public class Client {
             out.flush();
         } catch (Exception ignored) {}
     }
-
-    public void disconnect() {
-        try {
-            connected = false;
-            if (socket != null) socket.close();
-        } catch (Exception ignored) {}
-    }
 }

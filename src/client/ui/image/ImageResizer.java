@@ -5,7 +5,6 @@ import client.ui.TextManager;
 import javax.swing.*;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.StyledDocument;
-import java.awt.*;
 
 public class ImageResizer {
 

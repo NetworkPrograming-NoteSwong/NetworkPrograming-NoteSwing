@@ -1,6 +1,7 @@
 package client.ui;
 
 import client.controller.EditorController;
+import client.ui.style.UIStyle;
 import global.object.DocumentMeta;
 
 import javax.swing.*;

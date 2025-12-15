@@ -9,7 +9,6 @@ import javax.swing.text.JTextComponent;
 import java.awt.*;
 import java.util.HashMap;
 import java.util.Map;
-import javax.swing.text.Element;
 import javax.swing.text.DefaultHighlighter;
 
 public class TextManager {
@@ -19,8 +18,6 @@ public class TextManager {
     private boolean ignoreEvents = false;
     private boolean listenerRegistered = false;
     private Map<Integer, Object> highlightTags = new HashMap<>();
-    private Object currentLineHighlightTag = null;
-
 
     public interface DocumentChangeListener {
         void onTextInserted(int offset, String text);

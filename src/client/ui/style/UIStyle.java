@@ -1,4 +1,4 @@
-package client.ui;
+package client.ui.style;
 
 import javax.swing.*;
 import javax.swing.border.AbstractBorder;

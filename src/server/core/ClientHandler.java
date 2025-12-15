@@ -67,8 +67,6 @@ public class ClientHandler extends Thread {
         try { clientSocket.close(); } catch (Exception ignored) {}
     }
 
-    public Socket getClientSocket() { return clientSocket; }
-
     public String getCurrentDocId() { return currentDocId; }
 
     public void setCurrentDocId(String docId) { this.currentDocId = docId; }

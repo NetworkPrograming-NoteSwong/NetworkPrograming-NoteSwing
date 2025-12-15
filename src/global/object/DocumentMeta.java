@@ -7,8 +7,6 @@ public class DocumentMeta implements Serializable {
     public String title;
     public long updatedAt;
 
-    public DocumentMeta() {}
-
     public DocumentMeta(String id, String title, long updatedAt) {
         this.id = id;
         this.title = title;
