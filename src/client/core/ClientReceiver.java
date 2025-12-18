@@ -32,6 +32,7 @@ public class ClientReceiver extends Thread {
                     case IMAGE_MOVE -> controller.onRemoteImageMove(msg.docId, msg.blockId, msg.newOffset);
                     case LOCK -> controller.onRemoteLock(msg.blockId, msg.userId);
                     case UNLOCK -> controller.onRemoteUnlock(msg.blockId, msg.userId);
+                    case DOC_DELETED -> controller.onRemoteDocDeleted(msg.docId);
                     default -> { /* JOIN/LEAVE 등은 무시 */ }
                 }
             }

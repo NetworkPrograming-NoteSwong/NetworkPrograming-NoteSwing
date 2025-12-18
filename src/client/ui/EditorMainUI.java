@@ -24,6 +24,7 @@ public class EditorMainUI extends JFrame {
     private JButton b_newDoc;
     private JButton b_deleteDoc;
     private JButton b_refresh;
+    private JButton b_backToLobby;
 
     private JTextPane t_editor;
     private TextManager textManager;
@@ -84,6 +85,14 @@ public class EditorMainUI extends JFrame {
 
         JPanel p_right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         p_right.setOpaque(false);
+
+        b_backToLobby = new JButton("←");
+        UIStyle.applyGhostButton(b_backToLobby);
+        b_backToLobby.addActionListener(e -> {
+            if (controller != null) controller.backToLobby();
+        });
+
+        p_right.add(b_backToLobby);
 
         p.add(p_left, BorderLayout.WEST);
         p.add(p_right, BorderLayout.EAST);
@@ -333,7 +342,6 @@ public class EditorMainUI extends JFrame {
             if (docs != null) {
                 for (DocumentMeta m : docs) docModel.addElement(m);
             }
-
             if (currentDocId != null) {
                 for (int i = 0; i < docModel.size(); i++) {
                     DocumentMeta m = docModel.get(i);
@@ -343,12 +351,11 @@ public class EditorMainUI extends JFrame {
                     }
                 }
             }
+            if (docModel.size() > 0 && list_docs.getSelectedIndex() == -1) {
+                list_docs.setSelectedIndex(0);
+            }
         } finally {
             updatingDocList = false;
-        }
-
-        if (docModel.size() > 0 && list_docs.getSelectedIndex() == -1) {
-            list_docs.setSelectedIndex(0);
         }
     }
 
@@ -364,7 +371,6 @@ public class EditorMainUI extends JFrame {
             return 0;
         }
     }
-
     public void onSnapshotFullSync(String docId, String title, String text) {
         this.currentDocId = docId;
         setDocTitle(title);
@@ -422,7 +428,6 @@ public class EditorMainUI extends JFrame {
                 JOptionPane.INFORMATION_MESSAGE
         );
     }
-
     public void setController(EditorController controller) {
         this.controller = controller;
 
@@ -437,11 +442,6 @@ public class EditorMainUI extends JFrame {
             public void onTextDeleted(int offset, int length) {
                 controller.onTextDeleted(offset, length);
                 imageManager.onTextDeleted(offset, length);
-            }
-
-            @Override
-            public void onFullDocumentChanged(String text) {
-                controller.onFullDocumentChanged(text);
             }
         });
         textManager.registerListener();

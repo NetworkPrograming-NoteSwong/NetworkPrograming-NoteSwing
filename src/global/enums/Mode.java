@@ -13,5 +13,7 @@ public enum Mode {
     DOC_DELETE,   // 문서 삭제
     SYNC_END,     // 스냅샷(이미지 포함) 전송 완료 알림
     LOCK,
-    UNLOCK
+    UNLOCK,
+    DOC_DELETED,   // 서버가 "이 문서가 삭제됨"을 알림
+    DOC_LEAVE      // 클라이언트가 문서방에서 나감
 }

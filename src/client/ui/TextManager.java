@@ -22,7 +22,6 @@ public class TextManager {
     public interface DocumentChangeListener {
         void onTextInserted(int offset, String text);
         void onTextDeleted(int offset, int length);
-        void onFullDocumentChanged(String text);
     }
 
     public TextManager(JTextComponent editor) {
@@ -116,10 +115,6 @@ public class TextManager {
         } finally {
             ignoreEvents = false;
         }
-    }
-
-    public String getFullText() {
-        return editor.getText();
     }
 
     public void setIgnoreEvents(boolean ignore) {

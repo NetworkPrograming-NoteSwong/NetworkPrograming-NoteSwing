@@ -4,10 +4,7 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-// server.core.LineLockManager
 public class LineLockManager {
-
-    // docId -> (lineIndex -> ownerUserId)
     private final Map<String, Map<Integer, String>> locks = new ConcurrentHashMap<>();
 
     public synchronized String tryLock(String docId, int lineIndex, String userId) {
@@ -15,7 +12,6 @@ public class LineLockManager {
         String current = docLocks.get(lineIndex);
 
         if (current == null || current.equals(userId)) {
-            // free or already mine → ok
             docLocks.put(lineIndex, userId);
             return userId;
         }

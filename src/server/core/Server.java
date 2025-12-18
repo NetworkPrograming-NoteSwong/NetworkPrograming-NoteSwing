@@ -76,11 +76,11 @@ public class Server {
         switch (msg.mode) {
             case LOCK -> handleLock(msg);
             case UNLOCK -> handleUnlock(msg);
+
             case DOC_LIST -> sendDocListTo(sender);
+
             case DOC_OPEN -> {
-                if (msg.docId != null) {
-                    docService.open(msg.docId, sender);
-                }
+                if (msg.docId != null) docService.open(msg.docId, sender);
             }
 
             case DOC_CREATE -> {
@@ -89,26 +89,32 @@ public class Server {
                 docService.open(created.id, sender);
             }
 
+            case DOC_LEAVE -> {
+                // 편집기 -> 로비 이동시, room 멤버십 정리
+                docService.leave(sender);
+            }
+
             case DOC_DELETE -> {
                 if (msg.docId == null) return;
 
                 String deletedId = msg.docId;
+
+                // 1) 삭제 수행
                 docService.delete(deletedId);
+
+                // 2) 목록 갱신 브로드캐스트 (모든 클라이언트)
                 broadcastDocListToAll();
 
-                // 삭제된 문서를 보고 있던 사람들은 “첫 문서”로 자동 이동
-                List<DocumentMeta> list = docService.listDocs();
-                String fallback = (list.isEmpty() ? null : list.get(0).id);
-                if (fallback == null) {
-                    DocumentMeta created = docService.create("Untitled Document");
-                    fallback = created.id;
-                    broadcastDocListToAll();
-                }
-
+                // 3) 삭제된 문서를 보고 있던 클라이언트들은 "다른 문서로 강제 이동"시키지 말고
+                //    DOC_DELETED 이벤트만 보내고 room에서 빼기
                 synchronized (handlers) {
                     for (ClientHandler h : handlers) {
                         if (deletedId.equals(h.getCurrentDocId())) {
-                            docService.open(fallback, h);
+                            docService.leave(h);
+
+                            EditMessage del = new EditMessage(Mode.DOC_DELETED, "server", null);
+                            del.docId = deletedId;
+                            h.send(del);
                         }
                     }
                 }
@@ -117,6 +123,7 @@ public class Server {
             case INSERT, DELETE, IMAGE_INSERT, IMAGE_RESIZE, IMAGE_MOVE -> {
                 docService.applyEdit(msg, sender);
             }
+
             default -> {}
         }
     }
@@ -132,7 +139,6 @@ public class Server {
         resp.blockId = lineIndex;
         resp.userId = owner;
 
-        // 같은 문서 편집 중인 모든 클라이언트에게 브로드캐스트
         broadcastToDoc(docId, resp);
     }
 
@@ -158,9 +164,7 @@ public class Server {
         String userId = h.getUserId();
         lockManager.releaseAllByUser(userId);
 
-        synchronized (handlers) {
-            handlers.remove(h);
-        }
+        synchronized (handlers) { handlers.remove(h); }
     }
 
     private void sendDocListTo(ClientHandler h) {
@@ -174,21 +178,17 @@ public class Server {
         res.docs = docService.listDocs();
 
         synchronized (handlers) {
-            for (ClientHandler h : handlers) {
-                h.send(res);
-            }
+            for (ClientHandler h : handlers) h.send(res);
         }
     }
 
     private void broadcastToDoc(String docId, EditMessage msg) {
         synchronized (handlers) {
             for (ClientHandler h : handlers) {
-                // 그 클라이언트가 지금 보고 있는 문서가 docId인 경우에만 전송
-                if (docId.equals(h.getCurrentDocId())) {
+                if (docId != null && docId.equals(h.getCurrentDocId())) {
                     h.send(msg);
                 }
             }
         }
     }
-
 }
